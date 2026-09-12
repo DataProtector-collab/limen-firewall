@@ -1,3 +1,5 @@
+import type { Locale } from "@/lib/i18n";
+
 export const PROTOCOLS = [
   "TCP",
   "UDP",
@@ -94,6 +96,9 @@ export interface Connection {
   rateIn: number;
   rateOut: number;
   startedAt: number;
+  source?: "kernel" | "lab";
+  inode?: string;
+  pid?: number;
 }
 
 export interface LogEntry {
@@ -121,6 +126,9 @@ export interface Settings {
   inboundPolicy: DefaultPolicy;
   autoAllowSystem: boolean;
   promptSound: boolean;
+  language: Locale;
+  kernelCapture: boolean;
+  labTraffic: boolean;
 }
 
 export interface TrafficSample {

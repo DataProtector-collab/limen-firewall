@@ -1,3 +1,5 @@
+import type { Locale } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import type { Action, AppCategory, Direction, Protocol } from "./types";
 
 export function fmtBytes(n: number): string {
@@ -15,8 +17,10 @@ export function fmtRate(n: number): string {
   return `${(v / (1024 * 1024)).toFixed(2)} MB/s`;
 }
 
-export function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString("de-DE", {
+export function fmtTime(ts: number, locale: Locale = "de"): string {
+  const tag =
+    locale === "zh" ? "zh-CN" : locale === "ar" ? "ar" : locale === "hi" ? "hi-IN" : locale === "bn" ? "bn" : locale;
+  return new Date(ts).toLocaleTimeString(tag, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -29,26 +33,16 @@ export function protoLabel(p: Protocol): string {
   return p;
 }
 
-export function directionLabel(d: Direction): string {
-  return d === "in" ? "Eingehend" : "Ausgehend";
+export function directionLabel(d: Direction, locale: Locale = "de"): string {
+  return t(locale, d === "in" ? "dir.in" : "dir.out");
 }
 
-export function actionLabel(a: Action): string {
-  return a === "allow" ? "Zugelassen" : "Blockiert";
+export function actionLabel(a: Action, locale: Locale = "de"): string {
+  return t(locale, a === "allow" ? "action.allow" : "action.block");
 }
 
-export function categoryLabel(c: AppCategory): string {
-  const map: Record<AppCategory, string> = {
-    system: "Windows",
-    browser: "Browser",
-    chat: "Kommunikation",
-    game: "Spiel",
-    media: "Medien",
-    office: "Büro",
-    util: "Dienst",
-    unknown: "Unbekannt",
-  };
-  return map[c];
+export function categoryLabel(c: AppCategory, locale: Locale = "de"): string {
+  return t(locale, `cat.${c}`);
 }
 
 export function initials(name: string): string {

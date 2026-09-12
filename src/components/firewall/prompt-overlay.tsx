@@ -1,27 +1,17 @@
 import { useState, type ReactNode } from "react";
-import {
-  Ban,
-  Globe,
-  Lock,
-  ShieldAlert,
-  ShieldOff,
-} from "lucide-react";
+import { Ban, Globe, Lock, ShieldAlert, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { APP_BY_ID } from "@/lib/firewall/catalog";
-import { protocolColor } from "@/lib/firewall/engine";
+import { appById, protocolColor } from "@/lib/firewall/engine";
 import { directionLabel, initials, protoLabel } from "@/lib/firewall/format";
 import { useFirewall } from "@/lib/firewall/store";
 import type { DecisionScope } from "@/lib/firewall/types";
+import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/utils";
 
-const SCOPES: { id: DecisionScope; label: string; hint: string }[] = [
-  { id: "once", label: "Diesmal", hint: "Nur diese eine Verbindung" },
-  { id: "app-host", label: "App + Ziel", hint: "Diese App zu diesem Host" },
-  { id: "app", label: "Gesamte App", hint: "Alle Ziele dieser Anwendung" },
-];
-
 export function PromptOverlay() {
+  const t = useT();
+  const lang = useFirewall((s) => s.settings.language);
   const pending = useFirewall((s) => s.pending);
   const decide = useFirewall((s) => s.decide);
   const item = pending[0];
@@ -30,10 +20,17 @@ export function PromptOverlay() {
   if (!item) return null;
 
   const conn = item.connection;
-  const app = APP_BY_ID[conn.appId];
+  const app = appById(conn.appId);
   const inbound = conn.direction === "in";
   const unsigned = app ? !app.signed : true;
   const rest = pending.length - 1;
+  const kernel = conn.source === "kernel";
+
+  const scopes: { id: DecisionScope; label: string; hint: string }[] = [
+    { id: "once", label: t("prompt.once"), hint: t("prompt.onceHint") },
+    { id: "app-host", label: t("prompt.appHost"), hint: t("prompt.appHostHint") },
+    { id: "app", label: t("prompt.app"), hint: t("prompt.appHint") },
+  ];
 
   return (
     <div
@@ -46,10 +43,10 @@ export function PromptOverlay() {
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-warn">
             <ShieldAlert className="size-4" />
-            Verbindung angefordert
+            {t("prompt.title")}
           </div>
           {rest > 0 ? (
-            <Badge variant="warn">{rest} weitere in Warteschlange</Badge>
+            <Badge variant="warn">{t("prompt.queue", { n: rest })}</Badge>
           ) : (
             <span className="font-mono text-xs text-subtle">Aegis</span>
           )}
@@ -72,7 +69,7 @@ export function PromptOverlay() {
             </div>
             <div className="min-w-0 flex-1">
               <h2 id="prompt-title" className="text-lg font-medium leading-snug text-fg">
-                {app?.name ?? "Unbekannte Anwendung"}
+                {app?.name ?? t("prompt.unknownApp")}
               </h2>
               <p className="truncate font-mono text-xs text-muted">{app?.exe}</p>
               <p className="mt-1 truncate text-xs text-subtle">{app?.path}</p>
@@ -80,76 +77,68 @@ export function PromptOverlay() {
           </div>
 
           <p className="text-sm leading-relaxed text-fg">
-            {inbound ? (
-              <>
-                Eine <span className="text-warn">eingehende</span> Verbindung will auf
-                diese Anwendung zugreifen.
-              </>
-            ) : (
-              <>
-                versucht, eine <span className="text-accent">Internetverbindung</span>{" "}
-                herzustellen.
-              </>
-            )}
+            {inbound ? t("prompt.bodyIn") : t("prompt.bodyOut")}
           </p>
+
+          {kernel ? (
+            <div className="text-xs text-info">
+              {t("prompt.kernel", { inode: conn.inode ?? "—" })}
+            </div>
+          ) : null}
 
           {unsigned ? (
             <div className="flex items-start gap-2 rounded-md border border-block/30 bg-block/10 px-3 py-2 text-xs text-block">
               <ShieldOff className="mt-0.5 size-4 shrink-0" />
-              Unsignierte Anwendung — Herausgeber unbekannt. Nur zulassen, wenn du
-              die Quelle kennst.
+              {t("prompt.unsigned")}
             </div>
           ) : inbound ? (
             <div className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
               <Ban className="mt-0.5 size-4 shrink-0" />
-              Fernzugriff. Eingehende Ports solltest du nur öffnen, wenn du den
-              Absender erwartest.
+              {t("prompt.inbound")}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-muted">
               <Lock className="size-3.5" />
-              Signiert · {app?.publisher}
+              {t("prompt.signed", { publisher: app?.publisher ?? "" })}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-elevated p-3 text-xs">
-            <Field label="Ziel">
+            <Field label={t("field.target")}>
               <span className="flex items-center gap-1.5 text-fg">
                 <Globe className="size-3.5 text-muted" />
                 <span className="truncate">{conn.remoteHost}</span>
               </span>
             </Field>
-            <Field label="IP-Adresse">
+            <Field label={t("field.ip")}>
               <span className="font-mono text-fg">{conn.remoteIp}</span>
             </Field>
-            <Field label="Protokoll">
+            <Field label={t("field.proto")}>
               <span className={cn("font-mono", protocolColor(conn.protocol))}>
                 {protoLabel(conn.protocol)}
               </span>
             </Field>
-            <Field label="Port">
+            <Field label={t("field.port")}>
               <span className="font-mono text-fg">{conn.remotePort}</span>
             </Field>
-            <Field label="Richtung">
-              <span className="text-fg">{directionLabel(conn.direction)}</span>
+            <Field label={t("field.dir")}>
+              <span className="text-fg">{directionLabel(conn.direction, lang)}</span>
             </Field>
-            <Field label="Land">
+            <Field label={t("field.country")}>
               <span className="text-fg">{conn.country}</span>
             </Field>
           </div>
 
           {item.stacked > 1 ? (
-            <p className="text-xs text-muted">
-              {item.stacked} gleichartige Anfragen von dieser App sind gebündelt.
-            </p>
+            <p className="text-xs text-muted">{t("prompt.stacked", { n: item.stacked })}</p>
           ) : null}
 
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-subtle">
-              Regel gilt für
+              {t("prompt.scope")}
             </p>
             <div className="grid grid-cols-3 gap-1.5">
-              {SCOPES.map((opt) => (
+              {scopes.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
@@ -179,7 +168,7 @@ export function PromptOverlay() {
               setScope("app-host");
             }}
           >
-            Blockieren
+            {t("btn.block")}
           </Button>
           <Button
             variant="allow"
@@ -188,7 +177,7 @@ export function PromptOverlay() {
               setScope("app-host");
             }}
           >
-            Zulassen
+            {t("btn.allow")}
           </Button>
         </div>
       </div>

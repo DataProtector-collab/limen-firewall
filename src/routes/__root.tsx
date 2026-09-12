@@ -15,7 +15,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Windows-Firewall: alle Verbindungen überwachen und Apps zulassen oder blockieren.",
+          "Aegis 1.1 — Kernel-Firewall: Verbindungen überwachen, Apps zulassen oder blockieren. Neun Sprachen.",
       },
     ],
     links: [

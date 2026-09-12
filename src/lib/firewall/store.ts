@@ -1,7 +1,10 @@
 import { create } from "zustand";
+import type { Locale } from "@/lib/i18n";
+import { isLocale } from "@/lib/i18n";
 import { APP_BY_ID, APPS, SYSTEM_APP_IDS } from "./catalog";
 import type {
   Action,
+  AppInfo,
   Connection,
   DecisionScope,
   DefaultPolicy,
@@ -41,6 +44,9 @@ const defaultSettings: Settings = {
   inboundPolicy: "ask",
   autoAllowSystem: true,
   promptSound: false,
+  language: "de",
+  kernelCapture: true,
+  labTraffic: false,
 };
 
 export interface FirewallState {
@@ -54,6 +60,12 @@ export interface FirewallState {
   pending: PendingRequest[];
   log: LogEntry[];
   samples: TrafficSample[];
+  kernelApps: AppInfo[];
+  kernelRx: number;
+  kernelTx: number;
+  kernelTcp: number;
+  kernelUdp: number;
+  kernelLive: boolean;
   blockedCount: number;
   allowedCount: number;
   setView: (view: ViewId) => void;
@@ -71,6 +83,15 @@ export interface FirewallState {
   setAppAction: (appId: string, action: Action) => void;
   pushLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   pushSample: (sample: TrafficSample) => void;
+  setKernelStats: (s: {
+    rx: number;
+    tx: number;
+    tcp: number;
+    udp: number;
+    apps: AppInfo[];
+    live?: boolean;
+  }) => void;
+  mergeKernelConnections: (conns: Connection[]) => void;
   hydrate: () => void;
   persist: () => void;
   reset: () => void;
@@ -107,6 +128,12 @@ export const useFirewall = create<FirewallState>((set, get) => ({
   pending: [],
   log: [],
   samples: [],
+  kernelApps: [],
+  kernelRx: 0,
+  kernelTx: 0,
+  kernelTcp: 0,
+  kernelUdp: 0,
+  kernelLive: false,
   blockedCount: 0,
   allowedCount: 0,
 
@@ -179,6 +206,10 @@ export const useFirewall = create<FirewallState>((set, get) => ({
     set((s) => {
       const next: Connection[] = [];
       for (const c of s.connections) {
+        if (c.source === "kernel") {
+          next.push(c);
+          continue;
+        }
         if (c.state === "blocked") continue;
         const age = now - c.startedAt;
         if (c.state === "syn" && age > 900) {
@@ -207,11 +238,12 @@ export const useFirewall = create<FirewallState>((set, get) => ({
   },
 
   decide: (pendingId, action, scope) => {
-    const { pending, rules } = get();
+    const { pending, rules, kernelApps } = get();
     const item = pending.find((p) => p.id === pendingId);
     if (!item) return;
     const conn = item.connection;
-    const app = APP_BY_ID[conn.appId];
+    const app = APP_BY_ID[conn.appId] ?? kernelApps.find((a) => a.id === conn.appId);
+    const name = app?.name ?? conn.appId;
 
     let nextRules = rules;
     if (scope === "app" || scope === "app-host") {
@@ -257,10 +289,10 @@ export const useFirewall = create<FirewallState>((set, get) => ({
       action,
       reason:
         scope === "once"
-          ? `${app?.name ?? conn.appId} · einmal`
+          ? `${name} · once`
           : scope === "app-host"
-            ? `${app?.name ?? conn.appId} → ${conn.remoteHost}`
-            : `${app?.name ?? conn.appId} · gesamte App`,
+            ? `${name} → ${conn.remoteHost}`
+            : `${name} · app`,
     });
 
     set((s) => ({
@@ -335,6 +367,30 @@ export const useFirewall = create<FirewallState>((set, get) => ({
     set((s) => ({ samples: [...s.samples, sample].slice(-48) }));
   },
 
+  setKernelStats: (k) => {
+    set({
+      kernelRx: k.rx,
+      kernelTx: k.tx,
+      kernelTcp: k.tcp,
+      kernelUdp: k.udp,
+      kernelApps: k.apps,
+      kernelLive: k.live ?? true,
+    });
+  },
+
+  mergeKernelConnections: (conns) => {
+    set((s) => {
+      const lab = s.connections.filter((c) => c.source !== "kernel");
+      const blockedIds = new Set(
+        s.connections.filter((c) => c.source === "kernel" && c.state === "blocked").map((c) => c.id),
+      );
+      const merged = conns.map((c) =>
+        blockedIds.has(c.id) ? { ...c, state: "blocked" as const } : c,
+      );
+      return { connections: [...merged, ...lab].slice(0, 120) };
+    });
+  },
+
   hydrate: () => {
     if (typeof window === "undefined") return;
     try {
@@ -349,7 +405,13 @@ export const useFirewall = create<FirewallState>((set, get) => ({
             Array.isArray(data.rules) && data.rules.length > 0
               ? data.rules
               : defaultSystemRules(),
-          settings: { ...defaultSettings, ...data.settings },
+          settings: {
+            ...defaultSettings,
+            ...data.settings,
+            language: isLocale(String(data.settings?.language ?? "de"))
+              ? (data.settings!.language as Locale)
+              : "de",
+          },
         });
       }
     } catch {
@@ -378,6 +440,7 @@ export const useFirewall = create<FirewallState>((set, get) => ({
       samples: [],
       blockedCount: 0,
       allowedCount: 0,
+      kernelLive: false,
     });
     get().persist();
   },

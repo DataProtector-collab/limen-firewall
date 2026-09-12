@@ -1,6 +1,6 @@
 # Aegis
 
-Windows-Firewall, die bei *ausgehenden* Verbindungen nachfragt.
+Windows-Firewall, die bei *ausgehenden* Verbindungen nachfragt. Version **1.1.0**.
 
 Die eingebaute Windows-Firewall ist für Inbound ganz okay. Sobald Chrome, Discord oder irgendein Updater aus `%TEMP%` nach draußen will, passiert nichts. Kein Dialog, keine Chance. Aegis dreht das um.
 
@@ -28,17 +28,29 @@ Genau das, was TinyWall / Little Snitch auf dem Mac machen. Nur halt als Konsole
   <img src="docs/prompt.png" alt="Aegis Verbindungsdialog: Chrome will zu google.com" width="720" />
 </p>
 
+## 1.1 — was neu ist
+
+Ab 1.1 liest Aegis die Sockettabelle direkt aus dem Kernel. `/proc/net/tcp`, `tcp6`, `udp`, `udp6`. Inodes werden über die Filedeskriptoren der Prozesse auf PID und Binary gelegt. Der Durchsatz kommt von `/proc/net/dev`. Ohne das ist eine Firewall nur ein schönes Panel.
+
+Unbekannte Remote-Sockets ohne Regel gehen durch denselben Dialog. Loopback und Listen-Ports siehst du in der Tabelle, sie nerven dich aber nicht. node, Vite und der Preview-Proxy sind vorab erlaubt — sonst legt die Konsole sich selbst lahm.
+
+Acht Sprachen dazu, die weltweit am häufigsten gesprochen werden: English, 中文, हिन्दी, Español, Français, العربية, বাংলা, Português. Deutsch bleibt Default. Arabisch klappt das Layout um (RTL). Umschalten unter Einstellungen, bleibt gespeichert.
+
+Das Windows-Labor (Chrome, Discord, …) ist noch da, aber aus. Anschalten, wenn du den Dialog ohne echten Socket testen willst.
+
+Was sich an der Nummer geändert hat, steht in [CHANGELOG.md](CHANGELOG.md). Wie Versionen laufen: [docs/VERSIONING.md](docs/VERSIONING.md). Unter Einstellungen dieselbe Liste nochmal, ohne Markdown.
+
 ## Was es kann
 
-Live-Tabelle mit Prozess, PID, Protokoll, Host, IP, Port, Richtung und Durchsatz. Filter für TCP, UDP, HTTP, HTTPS, QUIC, DNS, ICMP, WebSocket, RDP.
+Live-Tabelle mit Prozess, PID, Protokoll, Host, IP, Port, Richtung, Kernel/Labor und Durchsatz. Filter für TCP, UDP, HTTP, HTTPS, QUIC, DNS, ICMP, WebSocket, RDP.
 
-Unbekannte Apps landen im Dialog. Windows-Dienste (svchost, Defender, Search, System) sind vorab erlaubt, sonst klickst du dich tot.
+Unbekannte Apps landen im Dialog. Systemkram und die eigene Runtime sind vorab erlaubt, sonst klickst du dich tot.
 
 Unsignierte Binaries und eingehendes RDP kriegen eine Warnung. Macht Sinn — `pcopt-svc.exe` aus dem Temp-Ordner sollte man nicht aus Gewohnheit durchwinken.
 
 Regeln halten in `localStorage`. Pro App, oder App plus Host. Lässt sich nachträglich an- und ausschalten.
 
-Einstellungen: Firewall an/aus, Standard Nachfragen / Sperren / Zulassen. Eingehend extra, weil RDP auf 3389 was anderes ist als Chrome auf 443.
+Einstellungen: Firewall an/aus, Kernel-Capture, Labor, Sprache, Standard Nachfragen / Sperren / Zulassen. Eingehend extra, weil RDP auf 3389 was anderes ist als Chrome auf 443.
 
 <p align="center">
   <img src="docs/monitor.png" alt="Aegis Live-Überwachung mit Traffic und Verbindungsliste" width="920" />
@@ -46,7 +58,7 @@ Einstellungen: Firewall an/aus, Standard Nachfragen / Sperren / Zulassen. Eingeh
 
 ## Was es nicht ist
 
-Kein WFP-Treiber, kein `netsh advfirewall`, kein Packet-Drop auf deinem echten Adapter. Die Konsole hängt an einer simulierten Windows-Maschine (echte Prozessnamen, echte Ziele, echte Ports), damit das Verhalten stimmt. Wenn du Layer-4 auf Hardware droppen willst, brauchst du weiterhin einen Filtertreiber. Das hier ist die UI und die Regel-Logik.
+Kein WFP-Treiber, kein `netsh advfirewall`. Blocken setzt die Richtlinie in der Konsole. Pakete auf dem Adapter droppen geht hier nicht — dafür bräuchte es nft/iptables im Userspace oder einen Filtertreiber auf Windows. Beides liegt in dieser Umgebung nicht. Die Überwachung ist echt. Das Droppen nicht. Das steht auch unter Einstellungen, nicht erst hier im Kleingedruckten.
 
 ## Start
 
@@ -57,7 +69,7 @@ npm i
 npm run dev
 ```
 
-Danach im Browser auf. Beim ersten Start klopft Chrome an, etwas später Discord. Über **Neue Verbindung** kannst du jederzeit eine weitere Anfrage erzwingen.
+Danach im Browser auf. Die Tabelle füllt sich aus der Kernel-Tabelle. Über **Neue Verbindung** erzwingst du den Dialog mit einer Labor-App, unabhängig davon ob das Labor sonst läuft.
 
 Build:
 
@@ -68,18 +80,25 @@ npm run build
 ## Ordner
 
 ```
-src/lib/firewall/            Katalog, Engine, Store
+src/lib/firewall/            Katalog, Engine, Store, Kernel-Reader
+src/lib/firewall/kernel-read.server.ts
+                             /proc/net Parser, inode → PID
+src/lib/i18n/                9 Sprachen
+src/lib/version.ts           APP_VERSION + Release-Notizen
 src/components/firewall/     Dialog, Monitor, Apps, Regeln, Verlauf
-src/components/ui/           Buttons, Switch, Input
+CHANGELOG.md                 was sich pro Version geändert hat
+docs/VERSIONING.md           wie Nummern vergeben werden
 ```
 
-`catalog.ts` hat die Prozesse und Ziele. `engine.ts` spawnt Verbindungen und matcht Regeln. `store.ts` ist Zustand + Persistenz.
+`kernel-read.server.ts` liest die Tabellen. `engine.ts` pollt einmal pro Sekunde und schiebt neue Sockets in den Dialog. `store.ts` ist Zustand + Persistenz.
 
 ## Hinweise
 
-UI ist auf Deutsch. Regeln überleben einen Reload, der Verlauf nicht — der ist Session-Kram.
+Default-Sprache ist Deutsch. Regeln überleben einen Reload, der Verlauf nicht — der ist Session-Kram.
 
 Wenn der Dialog nervt: Einstellungen → Standardrichtlinie auf Zulassen. Dann greifen nur noch explizite Block-Regeln. Umgekehrt Sperren, wenn du Default-Deny willst.
+
+Nächstes größeres Upgrade wäre 1.2, nicht ein stilles 1.1.1. So bleibt nachvollziehbar, wann die Capture-Logik sich geändert hat.
 
 ## Lizenz
 

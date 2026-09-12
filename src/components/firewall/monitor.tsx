@@ -3,11 +3,11 @@ import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { APP_BY_ID } from "@/lib/firewall/catalog";
-import { protocolColor } from "@/lib/firewall/engine";
-import { fmtBytes, fmtRate, protoLabel } from "@/lib/firewall/format";
+import { appById, protocolColor } from "@/lib/firewall/engine";
+import { directionLabel, fmtBytes, fmtRate, protoLabel } from "@/lib/firewall/format";
 import { useFirewall } from "@/lib/firewall/store";
 import { PROTOCOLS, type Protocol } from "@/lib/firewall/types";
+import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/utils";
 
 const FILTERS: Array<Protocol | "ALL"> = [
@@ -24,6 +24,8 @@ const FILTERS: Array<Protocol | "ALL"> = [
 ];
 
 export function MonitorView() {
+  const t = useT();
+  const lang = useFirewall((s) => s.settings.language);
   const connections = useFirewall((s) => s.connections);
   const samples = useFirewall((s) => s.samples);
   const query = useFirewall((s) => s.query);
@@ -32,20 +34,26 @@ export function MonitorView() {
   const setProtoFilter = useFirewall((s) => s.setProtoFilter);
   const blockedCount = useFirewall((s) => s.blockedCount);
   const allowedCount = useFirewall((s) => s.allowedCount);
+  const kernelCapture = useFirewall((s) => s.settings.kernelCapture);
+  const kernelRx = useFirewall((s) => s.kernelRx);
+  const kernelTx = useFirewall((s) => s.kernelTx);
 
-  const live = connections.filter((c) => c.state === "established");
-  const rateIn = live.reduce((a, c) => a + c.rateIn, 0);
-  const rateOut = live.reduce((a, c) => a + c.rateOut, 0);
+  const live = connections.filter(
+    (c) => c.state === "established" || c.state === "listen",
+  );
+  const rateIn = kernelCapture ? kernelRx : live.reduce((a, c) => a + c.rateIn, 0);
+  const rateOut = kernelCapture ? kernelTx : live.reduce((a, c) => a + c.rateOut, 0);
 
   const q = query.trim().toLowerCase();
   const shown = connections.filter((c) => {
     if (c.state === "blocked") return false;
     if (protoFilter !== "ALL" && c.protocol !== protoFilter) return false;
     if (!q) return true;
-    const app = APP_BY_ID[c.appId];
+    const app = appById(c.appId);
     return (
       app?.name.toLowerCase().includes(q) ||
       app?.exe.toLowerCase().includes(q) ||
+      app?.path.toLowerCase().includes(q) ||
       c.remoteHost.toLowerCase().includes(q) ||
       c.remoteIp.includes(q) ||
       c.protocol.toLowerCase().includes(q)
@@ -61,33 +69,33 @@ export function MonitorView() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Stat
-          label="Aktive Verbindungen"
+          label={t("stat.active")}
           value={String(live.length)}
-          hint={`${connections.length} erfasst`}
+          hint={t("stat.captured", { n: connections.length })}
         />
         <Stat
-          label="Empfangen"
+          label={t("stat.rx")}
           value={fmtRate(rateIn)}
-          hint={`${fmtBytes(live.reduce((a, c) => a + c.bytesIn, 0))} gesamt`}
+          hint={kernelCapture ? t("stat.kernelHint") : fmtBytes(live.reduce((a, c) => a + c.bytesIn, 0))}
           icon={<ArrowDown className="size-3.5 text-allow" />}
         />
         <Stat
-          label="Gesendet"
+          label={t("stat.tx")}
           value={fmtRate(rateOut)}
-          hint={`${fmtBytes(live.reduce((a, c) => a + c.bytesOut, 0))} gesamt`}
+          hint={kernelCapture ? t("stat.kernelHint") : fmtBytes(live.reduce((a, c) => a + c.bytesOut, 0))}
           icon={<ArrowUp className="size-3.5 text-info" />}
         />
         <Stat
-          label="Entscheidungen"
+          label={t("stat.decisions")}
           value={`${allowedCount} / ${blockedCount}`}
-          hint="Zugelassen / blockiert"
+          hint={t("stat.allowBlock")}
         />
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <div className="flex items-center justify-between px-4 pt-3">
           <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-            Durchsatz
+            {t("stat.throughput")}
           </p>
           <p className="font-mono text-xs text-muted">
             ↓ {fmtRate(rateIn)} · ↑ {fmtRate(rateOut)}
@@ -128,7 +136,7 @@ export function MonitorView() {
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-subtle">
-              Warte auf Messwerte…
+              {t("stat.wait")}
             </div>
           )}
         </div>
@@ -139,7 +147,7 @@ export function MonitorView() {
           {protoMix.map((x) => (
             <Badge key={x.p} variant="default" className="font-mono">
               <span className={protocolColor(x.p)}>{protoLabel(x.p)}</span>
-              <span className="ml-1.5 tabular-nums text-subtle">{x.n}</span>
+              <span className="ms-1.5 tabular-nums text-subtle">{x.n}</span>
             </Badge>
           ))}
         </div>
@@ -149,7 +157,7 @@ export function MonitorView() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Suche App, Host, IP…"
+          placeholder={t("search.ph")}
           className="sm:max-w-xs"
         />
         <div className="flex gap-1 overflow-x-auto pb-1">
@@ -165,7 +173,7 @@ export function MonitorView() {
                   : "border-border text-muted hover:text-fg",
               )}
             >
-              {p === "ALL" ? "Alle" : protoLabel(p)}
+              {p === "ALL" ? t("filter.all") : protoLabel(p)}
             </button>
           ))}
         </div>
@@ -173,22 +181,22 @@ export function MonitorView() {
 
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <div className="hidden grid-cols-[1.3fr_0.6fr_1.4fr_0.5fr_0.6fr_0.7fr] gap-2 border-b border-border px-4 py-2 text-xs uppercase tracking-wider text-subtle md:grid">
-          <span>Anwendung</span>
-          <span>Protokoll</span>
-          <span>Ziel</span>
-          <span>Port</span>
-          <span>Richtung</span>
-          <span className="text-right">Traffic</span>
+          <span>{t("col.app")}</span>
+          <span>{t("col.proto")}</span>
+          <span>{t("col.target")}</span>
+          <span>{t("col.port")}</span>
+          <span>{t("col.dir")}</span>
+          <span className="text-end">{t("col.traffic")}</span>
         </div>
         {shown.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted">
             <ShieldOff className="size-6 text-subtle" />
-            Keine passenden Verbindungen.
+            {t("empty.conns")}
           </div>
         ) : (
           <ul className="divide-y divide-border">
             {shown.slice(0, 60).map((c) => {
-              const app = APP_BY_ID[c.appId];
+              const app = appById(c.appId);
               return (
                 <li
                   key={c.id}
@@ -197,7 +205,8 @@ export function MonitorView() {
                   <div className="min-w-0">
                     <p className="truncate text-sm text-fg">{app?.name ?? c.appId}</p>
                     <p className="truncate font-mono text-xs text-subtle">
-                      {app?.exe} · PID {app?.pid}
+                      {app?.exe} · PID {c.pid ?? app?.pid}
+                      {c.source === "kernel" ? ` · ${t("status.kernel")}` : ""}
                     </p>
                   </div>
                   <div className={cn("font-mono text-xs", protocolColor(c.protocol))}>
@@ -209,14 +218,10 @@ export function MonitorView() {
                       {c.remoteIp} · {c.country}
                     </p>
                   </div>
-                  <div className="font-mono text-xs tabular-nums text-muted">
-                    {c.remotePort}
-                  </div>
-                  <div className="text-xs text-muted">
-                    {c.direction === "in" ? "Eingehend" : "Ausgehend"}
-                  </div>
-                  <div className="text-right font-mono text-xs tabular-nums text-muted">
-                    {fmtRate(c.rateIn + c.rateOut)}
+                  <div className="font-mono text-xs tabular-nums text-muted">{c.remotePort}</div>
+                  <div className="text-xs text-muted">{directionLabel(c.direction, lang)}</div>
+                  <div className="text-end font-mono text-xs tabular-nums text-muted">
+                    {c.state === "listen" ? "LISTEN" : fmtRate(c.rateIn + c.rateOut)}
                     <span className="block text-subtle">{fmtBytes(c.bytesIn + c.bytesOut)}</span>
                   </div>
                 </li>
