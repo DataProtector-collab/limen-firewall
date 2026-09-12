@@ -9,6 +9,7 @@ export interface KernelSocket {
   state: string;
   inode: string;
   pid: number | null;
+  processStartedAt?: number;
   comm: string;
   exe: string;
   uid: number;

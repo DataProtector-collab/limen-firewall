@@ -49,7 +49,7 @@ if (!app.requestSingleInstanceLock()) {
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'",
       ] },
     }));
-    for (const operation of ['status', 'snapshot', 'list', 'apply', 'remove', 'enabled']) {
+    for (const operation of ['status', 'snapshot', 'processes', 'process-inspect', 'list', 'apply', 'remove', 'enabled']) {
       ipcMain.handle(`limen:${operation}`, (event, payload, ...extra) => {
         validateSender(event, mainWindow, entryUrl);
         if (extra.length) throw new Error('Unexpected native arguments.');

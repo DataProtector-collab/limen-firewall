@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('limen', Object.freeze({
   platform: process.platform,
   getStatus: () => ipcRenderer.invoke('limen:status'),
   getSnapshot: () => ipcRenderer.invoke('limen:snapshot'),
+  getProcessSnapshot: () => ipcRenderer.invoke('limen:processes'),
+  inspectProcess: (identity) => ipcRenderer.invoke('limen:process-inspect', identity),
   listRules: () => ipcRenderer.invoke('limen:list'),
   applyRule: (input) => ipcRenderer.invoke('limen:apply', input),
   removeRule: (id) => ipcRenderer.invoke('limen:remove', id),

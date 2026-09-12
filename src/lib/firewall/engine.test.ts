@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import { applySnapshot, simulateConnection, startEngine } from "./engine";
 import { getKernelSnapshot } from "./kernel";
 import { useFirewall } from "./store";
+import { useTelemetry } from "./telemetry-store";
 import type { KernelSnapshot } from "./kernel-types";
 
 const snapshot: KernelSnapshot = {
@@ -17,10 +18,26 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
   applySnapshot({ ...snapshot, available: false, capture: "unavailable" });
   useFirewall.getState().reset();
+  useTelemetry.getState().resetSession();
   useFirewall.setState({ hydrated: true });
 });
 afterEach(() => { stop?.(); stop = undefined; });
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+test("the flight recorder receives native snapshots and withholds rates after capture fails", () => {
+  applySnapshot(snapshot);
+  applySnapshot({ ...snapshot, at: 3000, rxBytes: 5000, txBytes: 8000 });
+  const observed = useTelemetry.getState();
+  assert.equal(observed.samples.length, 2);
+  assert.equal(observed.samples[0]!.rx, null);
+  assert.equal(observed.samples[1]!.rx, 2000);
+  assert.equal(observed.samples[1]!.tx, 3000);
+  assert.equal(observed.programs[0]!.exe, "C:\\Apps\\Example.exe");
+  applySnapshot({ ...snapshot, at: 5000, available: false, capture: "unavailable", error: "Capture lost" });
+  assert.equal(useTelemetry.getState().quality.status, "unavailable");
+  assert.equal(useTelemetry.getState().quality.trafficReady, false);
+  assert.equal(useTelemetry.getState().samples.length, 2);
+});
 
 test("browser capture is explicitly unavailable and never reads a web server", async () => {
   const result = await getKernelSnapshot();

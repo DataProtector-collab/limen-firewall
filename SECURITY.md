@@ -18,8 +18,14 @@ Rules are scoped to explicit executable paths and managed by Limen's own rule id
 - Local administrator rules can be superseded or disabled by domain policy. An allow rule does not override an explicit block rule.
 - A rule can be saved and enabled but inactive in Windows' active policy, for example when a filtering category is disabled. The UI reports ActiveStore status and registered external firewall providers. Even `OK / Full` is Windows-reported status, not a successful packet-blocking test; see [the validation record](docs/VALIDATION.md).
 - Rules persist in Windows after closing or uninstalling Limen. Review them before uninstalling.
-- Process paths may be unavailable. Signature verification, per-process traffic measurement, and dropped-packet counts are not implemented. TCP direction is not inferred from port numbers. The UI does not infer trust or packet delivery from these missing measurements.
+- Process paths may be unavailable. Blackbox performs explicit executable signature and SHA-256 inspection; loaded module signatures, per-process traffic measurement and dropped-packet counts are not measured. TCP direction is not inferred from port numbers. The UI does not infer trust or packet delivery from these missing measurements.
 - Releases are unsigned until the project obtains a signing certificate; verify published checksums.
+
+## Observation privacy and limits
+
+Blackbox uses PID plus process creation time and withholds mismatched process identities. It reads service relationships and loaded module metadata, not process memory or command lines. A hosted service is not attributed as a socket origin. Hashing and signature inspection use local executable files; a valid signature is not a behavior verdict.
+
+The War Monitor stores bounded observations and frozen destination references in memory. JSON exports are local and can contain paths and IP addresses. Heuristic findings never create firewall rules automatically. Drift Guard is an experimental, incomplete observation reference, not an enforced allowlist. [Observation details](docs/OBSERVABILITY.md).
 
 ## Reporting
 

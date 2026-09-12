@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($SourcePath, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw 'Backend syntax is invalid.' }
-foreach ($name in @('Get-DotNetNetworkInterfaces', 'Get-DotNetTrafficAdapters', 'Convert-TrafficCounters', 'Get-NativeTraffic', 'Get-NativeSnapshot')) {
+foreach ($name in @('Get-DotNetNetworkInterfaces', 'Get-DotNetTrafficAdapters', 'Convert-TrafficCounters', 'Get-NativeTraffic', 'Convert-ProcessStartedAt', 'Get-NativeSnapshot')) {
     $definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $false)
     if (-not $definition) { throw "Missing capture helper: $name" }
     . ([scriptblock]::Create($definition.Extent.Text))

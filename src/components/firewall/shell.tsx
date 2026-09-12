@@ -1,9 +1,20 @@
 import { useEffect } from "react";
-import { Activity, AppWindow, FlaskConical, ListTree, Radio, Settings2 } from "lucide-react";
+import {
+  Activity,
+  AppWindow,
+  Box,
+  FlaskConical,
+  ListTree,
+  Radar,
+  Radio,
+  Settings2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppsView } from "@/components/firewall/apps";
 import { LogView } from "@/components/firewall/log";
 import { MonitorView } from "@/components/firewall/monitor";
+import { BlackboxView } from "@/components/firewall/blackbox";
+import { WarMonitorView } from "@/components/firewall/war-monitor";
 import { PromptOverlay } from "@/components/firewall/prompt-overlay";
 import { RulesView } from "@/components/firewall/rules";
 import { SettingsView } from "@/components/firewall/settings";
@@ -19,6 +30,8 @@ import { cn } from "@/lib/utils";
 
 const NAV: { id: ViewId; key: string; icon: typeof Activity }[] = [
   { id: "monitor", key: "nav.monitor", icon: Activity },
+  { id: "war", key: "nav.war", icon: Radar },
+  { id: "blackbox", key: "nav.blackbox", icon: Box },
   { id: "apps", key: "nav.apps", icon: AppWindow },
   { id: "rules", key: "nav.rules", icon: ListTree },
   { id: "log", key: "nav.log", icon: Radio },
@@ -109,7 +122,7 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
               </Button>
             ) : null}
           </header>
-          <main className="space-y-4 p-4 pb-24 md:p-6 md:pb-8">
+          <main className="space-y-4 p-4 pb-36 md:p-6 md:pb-8">
             {native && view !== "settings" ? (
               <details
                 open={statusNeedsAttention}
@@ -150,6 +163,10 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
             ) : null}
             {view === "monitor" ? (
               <MonitorView />
+            ) : view === "war" ? (
+              <WarMonitorView />
+            ) : view === "blackbox" ? (
+              <BlackboxView />
             ) : view === "apps" ? (
               <AppsView />
             ) : view === "rules" ? (
@@ -163,7 +180,7 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
         </div>
       </div>
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-surface md:hidden"
         aria-label={APP_NAME}
       >
         {NAV.map(({ id, key, icon: Icon }) => (
@@ -174,7 +191,7 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
             aria-current={view === id ? "page" : undefined}
             aria-label={t(key)}
             className={cn(
-              "flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs",
+              "flex h-14 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs",
               view === id ? "text-fg" : "text-muted",
             )}
           >

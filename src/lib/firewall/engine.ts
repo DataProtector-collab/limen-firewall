@@ -3,6 +3,7 @@ import { getKernelSnapshot, type KernelSnapshot } from "./kernel";
 import { getNativeBridge } from "./native-types";
 import { hasInterfaceCounters, interfaceRates, kernelApp, sockToConn } from "./snapshot";
 import { useFirewall } from "./store";
+import { ingestTelemetry, markTelemetryUnavailable } from "./telemetry-store";
 import type { AppInfo, Connection, Protocol } from "./types";
 
 let session = 0;
@@ -25,6 +26,7 @@ function watchCaptureFreshness() {
     const state = useFirewall.getState();
     if (!started || session !== currentSession || !state.settings.kernelCapture || state.settings.labTraffic) return;
     previousSnapshot = undefined;
+    markTelemetryUnavailable("Capture is stale; waiting for a fresh Windows snapshot.");
     // Retain the last observed rows and timestamp, but never label old data live.
     useFirewall.setState({ kernelLive: false, kernelTrafficReady: false, captureStale: true,
       kernelRx: 0, kernelTx: 0, samples: [] });
@@ -32,6 +34,7 @@ function watchCaptureFreshness() {
 }
 
 function captureUnavailable(error: string) {
+  markTelemetryUnavailable(error);
   clearTimeout(freshnessTimer);
   freshnessTimer = undefined;
   previousSnapshot = undefined;
@@ -93,6 +96,7 @@ export function applySnapshot(snapshot: KernelSnapshot): void {
     captureStale: false, trafficError: countersAvailable ? null : (snapshot.trafficError ?? "Windows adapter traffic counters are unavailable."),
     ...(rates ? {} : { samples: [] }) });
   if (rates) state.pushSample({ t: snapshot.at, in: rates.rx, out: rates.tx, blocked: 0 });
+  ingestTelemetry(snapshot, rates);
   if (started) watchCaptureFreshness();
 }
 
@@ -134,6 +138,7 @@ async function pollKernel(currentSession: number): Promise<void> {
 }
 
 function stopEngine() {
+  markTelemetryUnavailable("Capture stopped.");
   session += 1;
   started = false;
   clearTimeout(pollTimer);
@@ -166,6 +171,7 @@ export function startEngine(initial?: KernelSnapshot | null) {
     if (state.settings.kernelCapture === previous.settings.kernelCapture && state.settings.labTraffic === previous.settings.labTraffic) return;
     captureRevision++;
     previousSnapshot = undefined;
+    markTelemetryUnavailable("Capture mode changed; waiting for a fresh Windows snapshot.");
     clearTimeout(freshnessTimer);
     freshnessTimer = undefined;
     if (state.settings.kernelCapture && !state.settings.labTraffic && getNativeBridge()) {

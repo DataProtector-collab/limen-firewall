@@ -48,9 +48,17 @@ function validateRule(input) {
 
 function validateRequest(operation, payload) {
   switch (operation) {
-    case 'status': case 'snapshot': case 'list':
+    case 'status': case 'snapshot': case 'processes': case 'list':
       if (payload !== undefined) throw new Error('This operation takes no arguments.');
       return undefined;
+    case 'process-inspect':
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+        || Object.keys(payload).some((key) => !['pid', 'startedAt'].includes(key))
+        || !Number.isInteger(payload.pid) || payload.pid < 1 || payload.pid > 4294967295
+        || !Number.isSafeInteger(payload.startedAt) || payload.startedAt < 1 || payload.startedAt > 8640000000000000) {
+        throw new Error('An exact process ID and start time are required.');
+      }
+      return { pid: payload.pid, startedAt: payload.startedAt };
     case 'apply': return validateRule(payload);
     case 'remove': case 'inspect': return { id: validateId(payload) };
     case 'enabled':

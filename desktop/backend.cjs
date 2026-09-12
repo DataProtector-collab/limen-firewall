@@ -22,6 +22,9 @@ function createBackend({ scriptPath = path.join(__dirname, 'windows-firewall.ps1
       const reason = 'Native Windows Firewall is only available in the Windows desktop application.';
       if (operation === 'status') return Promise.resolve({ platform, available: false, elevated: false, firewallEnabled: false, backend: 'none', reason });
       if (operation === 'snapshot') return Promise.resolve(unavailableSnapshot(reason, platform));
+      if (operation === 'processes') return Promise.resolve({ at: Date.now(), available: false, processes: [], errors: [reason], truncated: false, captureDurationMs: 0 });
+      if (operation === 'process-inspect') return Promise.resolve({ at: Date.now(), available: false, identity: data,
+        children: [], modules: [], modulesTruncated: false, signature: { status: 'unknown' }, errors: [reason], captureDurationMs: 0 });
       return Promise.reject(new Error(reason));
     }
     return new Promise((resolve, reject) => {
@@ -39,9 +42,12 @@ function createBackend({ scriptPath = path.join(__dirname, 'windows-firewall.ps1
         if (error) reject(error); else resolve(result);
       };
       const timer = setTimeout(() => {
+        // Settle before kill: a synchronous close callback must not replace the timeout.
+        finish(new Error(operation === 'process-inspect' || operation === 'processes'
+          ? 'Process observation timed out. Refresh the process inventory before retrying.'
+          : 'Windows Firewall did not respond in time. Refresh rules before retrying a change.'));
         child.kill();
-        finish(new Error('Windows Firewall did not respond in time. Refresh rules before retrying a change.'));
-      }, timeout);
+      }, operation === 'process-inspect' || operation === 'processes' ? Math.min(timeout, 30000) : timeout);
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk) => {
@@ -89,7 +95,8 @@ function createBackend({ scriptPath = path.join(__dirname, 'windows-firewall.ps1
     }
     // A rule read belongs to the mutation generation at invocation time. Post-change
     // verification must wait for queued writes and must never reuse a pre-change read.
-    const key = operation === 'list' ? `${operation}:${rulesGeneration}` : operation;
+    const key = operation === 'list' ? `${operation}:${rulesGeneration}`
+      : operation === 'process-inspect' ? `${operation}:${payload.pid}:${payload.startedAt}` : operation;
     if (reads.has(key)) return reads.get(key);
     const beforeRead = operation === 'list' ? mutationTail : Promise.resolve();
     const promise = beforeRead.then(() => run(operation, payload)).finally(() => {

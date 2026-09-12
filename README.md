@@ -2,19 +2,19 @@
 
 **See Windows connections. Create real Windows Firewall rules for the programs you choose.**
 
-Limen **1.2.1** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release writes rules to Windows and reads their saved fields and active-policy status back. Successful storage does not guarantee that traffic is blocked; see the [validation record](docs/VALIDATION.md).
+Limen **1.3.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release writes rules to Windows and reads their saved fields and active-policy status back. Successful storage does not guarantee that traffic is blocked; see the [validation record](docs/VALIDATION.md).
 
-![Limen 1.2.1 running in a Windows VM, filtered to the isolated test program](docs/monitor-native-1.2.1.png)
+![Limen 1.3.0 Blackbox Breaker inspecting a shared Windows service host](docs/blackbox-native-1.3.0.png)
 
-The screenshot is the installed Windows application in the test VM, filtered to the isolated test program. Its interface counters reflect real VM traffic. See the [validation record](docs/VALIDATION.md) for the UI and packet tests.
+The screenshot is the installed 1.3.0 Windows application in the test VM, inspecting a real shared service host. See the [validation record](docs/VALIDATION.md) for the process, UI, telemetry and packet checks, and the [War Monitor screenshot](docs/war-monitor-native-1.3.0.png) for its actual session chart.
 
-[Windows downloads](https://github.com/DataProtector-collab/limen-firewall/releases/tag/v1.2.1) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Changes](CHANGELOG.md)
+[Windows downloads](https://github.com/DataProtector-collab/limen-firewall/releases/tag/v1.3.0) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Changes](CHANGELOG.md)
 
 ## Install on Windows
 
 Use Windows 10/11 **x64**, with Windows PowerShell 5.1, the NetSecurity module, and Windows Defender Firewall available.
 
-1. Download **Limen-1.2.1-setup-x64.exe** for installation, or **Limen-1.2.1-portable-x64.exe** for the portable app.
+1. Download **Limen-1.3.0-setup-x64.exe** for installation, or **Limen-1.3.0-portable-x64.exe** for the portable app.
 2. Starting the desktop app requests administrator privileges for Windows Firewall rule management. Without elevation, rule changes are unavailable.
 3. Open **Monitor** or **Apps** to inspect observed programs. Create an explicit inbound or outbound rule for a program, optionally limited to a literal remote IP, TCP/UDP, and local or remote port.
 4. Use **Rules** to inspect, disable, or remove rules created by Limen.
@@ -43,12 +43,18 @@ Limen displays the rule's **ActiveStore** status. A stored rule reported as `Ina
 - Real TCP states and bound UDP endpoints, process IDs, and executable paths when Windows permits access. The socket count includes listening, bound, and closing endpoints; it is not a count of programs currently transferring data.
 - Traffic rates from two comparable adapter-counter readings. The first reading establishes a baseline; unavailable counters do not appear as zero traffic. Per-program traffic and dropped-packet counts are **not measured** and are not fabricated.
 - UDP endpoint enumeration does not supply a remote peer. TCP socket enumeration also does not reliably identify connection direction; unknown values stay unknown.
-- A binary's signature is not assumed from its name or path. Unchecked signatures remain unknown.
+- A binary's signature is not assumed from its name or path. Blackbox inspection can verify the selected executable; uninspected binaries and loaded module signatures remain unknown.
 - Capture is periodic. The monitor shows the last successful read and whether another read is pending. After 15 seconds without a fresh snapshot, retained observations are labeled stale and traffic rates are withheld. Very short connections can be missed; inaccessible process paths and failed reads are reported rather than replaced with mock data.
 
-Version 1.2.1 fixes a reproduced false-zero counter result on Windows. Failed counter reads preserve valid socket observations, and changes to the counter provider or adapter set require a fresh rate baseline. Connections and rule actions appear before the optional throughput chart. New rules default to the whole program; restricting a rule to one remote IP is an explicit choice shown in the scope summary before saving.
+Version 1.2.1 fixed a reproduced false-zero counter result on Windows. Failed counter reads preserve valid socket observations, and changes to the counter provider or adapter set require a fresh rate baseline. Connections and rule actions appear before the optional throughput chart. New rules default to the whole program; restricting a rule to one remote IP is an explicit choice shown in the scope summary before saving.
 
 The optional simulation lab keeps its traffic and policies separate from Windows rules. Old browser-local rules are never silently installed into Windows.
+
+## Blackbox Breaker and War Monitor
+
+Version 1.3.0 adds hosted-service and process inspection, module lists, executable hashes and signature results, a local telemetry recorder, evidence-based anomaly hints and experimental Drift Guard. Freeze a program's observed TCP destinations to review later deviations without continually relearning them. These observations guide explicit Windows rule decisions; they do not automatically label or block programs.
+
+Read [the observation guide](docs/OBSERVABILITY.md) for controls, sampling limits and the distinction between a shared host and the service that originated traffic.
 
 ## Build from source
 

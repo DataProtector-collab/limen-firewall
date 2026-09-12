@@ -1,5 +1,5 @@
 export const APP_NAME = "Limen";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.3.0";
 
 export interface ReleaseNote {
   version: string;
@@ -9,6 +9,17 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.3.0",
+    date: "2026-09-12",
+    title: "Blackbox Breaker, War Monitor and experimental Drift Guard",
+    items: [
+      "Inspect real hosted Windows services, process relationships and loaded modules with executable hashes and signature results.",
+      "Record host traffic and observed socket changes in a bounded local session recorder.",
+      "Review evidence for traffic bursts, peer fan-out, reconnect patterns, new listeners and SYN pressure.",
+      "Freeze an observed program destination baseline with experimental Drift Guard; review deviations before creating explicit Windows rules.",
+    ],
+  },
   {
     version: "1.2.1",
     date: "2026-09-12",

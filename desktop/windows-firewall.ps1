@@ -278,21 +278,41 @@ function Get-NativeTraffic {
     }
 }
 
+function Convert-ProcessStartedAt($Value) {
+    if ($null -eq $Value) { return $null }
+    try {
+        if ($Value -isnot [DateTime] -and $Value -isnot [DateTimeOffset]) { return $null }
+        $milliseconds = ([DateTimeOffset]$Value).ToUniversalTime().ToUnixTimeMilliseconds()
+        if ($milliseconds -gt 0) { return $milliseconds }
+    } catch { }
+    return $null
+}
+
 function Get-NativeSnapshot {
     $captureTimer = [Diagnostics.Stopwatch]::StartNew()
+    $captureStartedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     try {
         $tcp = @(Get-NetTCPConnection -ErrorAction Stop)
         $udp = @(Get-NetUDPEndpoint -ErrorAction Stop)
         $processes = @{}
+        $ownerPids = [Collections.Generic.HashSet[int]]::new()
+        foreach ($socket in @($tcp) + @($udp)) { $null = $ownerPids.Add([int]$socket.OwningProcess) }
         foreach ($process in @(Get-Process -ErrorAction Stop)) {
             $exe = ''
             try { $exe = [string]$process.Path } catch { }
-            $processes[[int]$process.Id] = @{ name = [string]$process.ProcessName; exe = $exe }
+            $startedAt = $null
+            if ($exe -and $ownerPids.Contains([int]$process.Id)) {
+                try { $startedAt = Convert-ProcessStartedAt $process.StartTime } catch { }
+            }
+            # A process created after enumeration began cannot own an earlier socket
+            # observation. Withhold the identity instead of joining a reused PID.
+            if ($null -ne $startedAt -and $startedAt -gt $captureStartedAt) { $startedAt = $null; $exe = '' }
+            $processes[[int]$process.Id] = @{ name = [string]$process.ProcessName; exe = $exe; startedAt = $startedAt }
         }
         $sockets = [Collections.Generic.List[object]]::new()
         foreach ($socket in $tcp) {
             $owner = $processes[[int]$socket.OwningProcess]
-            $sockets.Add([ordered]@{
+            $entry = [ordered]@{
                 id = "TCP|$($socket.LocalAddress)|$($socket.LocalPort)|$($socket.RemoteAddress)|$($socket.RemotePort)|$($socket.OwningProcess)"
                 proto = 'TCP'; family = $(if ($socket.LocalAddress.Contains(':')) { 6 } else { 4 })
                 localIp = [string]$socket.LocalAddress; localPort = [int]$socket.LocalPort
@@ -300,18 +320,22 @@ function Get-NativeSnapshot {
                 state = ([string]$socket.State).ToUpperInvariant(); inode = ''; pid = [int]$socket.OwningProcess
                 comm = $(if ($owner) { $owner.name } else { 'Unknown process' }); exe = $(if ($owner) { $owner.exe } else { '' })
                 uid = -1; direction = 'unknown'
-            })
+            }
+            if ($owner -and $null -ne $owner.startedAt) { $entry.processStartedAt = $owner.startedAt }
+            $sockets.Add($entry)
         }
         foreach ($socket in $udp) {
             $owner = $processes[[int]$socket.OwningProcess]
-            $sockets.Add([ordered]@{
+            $entry = [ordered]@{
                 id = "UDP|$($socket.LocalAddress)|$($socket.LocalPort)|$($socket.OwningProcess)"
                 proto = 'UDP'; family = $(if ($socket.LocalAddress.Contains(':')) { 6 } else { 4 })
                 localIp = [string]$socket.LocalAddress; localPort = [int]$socket.LocalPort
                 remoteIp = ''; remotePort = 0; state = 'BOUND'; inode = ''; pid = [int]$socket.OwningProcess
                 comm = $(if ($owner) { $owner.name } else { 'Unknown process' }); exe = $(if ($owner) { $owner.exe } else { '' })
                 uid = -1; direction = 'unknown'
-            })
+            }
+            if ($owner -and $null -ne $owner.startedAt) { $entry.processStartedAt = $owner.startedAt }
+            $sockets.Add($entry)
         }
         $traffic = Get-NativeTraffic
         # Timestamp the measured counters rather than the beginning of a slow
@@ -330,6 +354,238 @@ function Get-NativeSnapshot {
     }
 }
 
+function Limit-ProcessText($Value, [int]$Maximum = 512) {
+    $text = [string]$Value
+    if ($text.Length -gt $Maximum) { return $text.Substring(0, $Maximum) }
+    return $text
+}
+
+function Convert-ProcessPath($Value) {
+    $text = [string]$Value
+    if (-not $text -or $text.Length -gt 32700 -or $text -notmatch '^[a-zA-Z]:\\' -or
+        $text -match '[\x00-\x1f<>"|?*]' -or $text.Substring(2).Contains(':')) { return '' }
+    try { return [IO.Path]::GetFullPath($text) } catch { return '' }
+}
+
+function Get-ProcessRows {
+    # Select only these properties at the provider; CommandLine is never collected.
+    return @(Get-CimInstance -Query 'SELECT ProcessId,ParentProcessId,Name,ExecutablePath,CreationDate FROM Win32_Process' -OperationTimeoutSec 10 -ErrorAction Stop)
+}
+
+function Get-ProcessServiceRows {
+    return @(Get-CimInstance -Query 'SELECT Name,DisplayName,State,ProcessId FROM Win32_Service WHERE ProcessId > 0' -OperationTimeoutSec 10 -ErrorAction Stop)
+}
+
+function Convert-ProcessEntry($Row) {
+    $issues = [Collections.Generic.List[string]]::new()
+    $startedAt = Convert-ProcessStartedAt $Row.CreationDate
+    $exe = Convert-ProcessPath $Row.ExecutablePath
+    if ($null -eq $startedAt) { $issues.Add('Process start time is unavailable; identity cannot be verified.') }
+    if (-not $exe) { $issues.Add('Executable path is unavailable or is not a supported local path.') }
+    return [ordered]@{ pid = [long]$Row.ProcessId; name = (Limit-ProcessText $Row.Name 260); exe = $exe
+        parentPid = $(if ($null -ne $Row.ParentProcessId) { [long]$Row.ParentProcessId } else { $null })
+        startedAt = $startedAt; services = @(); errors = @($issues.ToArray()) }
+}
+
+function Get-HostedService($Row) {
+    $issues = [Collections.Generic.List[string]]::new()
+    $service = [ordered]@{ name = (Limit-ProcessText $Row.Name 256); displayName = (Limit-ProcessText $Row.DisplayName 512); state = (Limit-ProcessText $Row.State 64) }
+    # Service names come from Windows, never caller-controlled registry paths.
+    # OpenSubKey returns null for a missing Parameters key, which is normal for EXE services.
+    $key = $null
+    try {
+        if ([string]$Row.Name -match '[\\/\x00-\x1f]' -or ([string]$Row.Name).Length -gt 256) { throw 'Unsupported service name.' }
+        $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\CurrentControlSet\Services\' + [string]$Row.Name + '\Parameters', $false)
+        if ($key) {
+            $rawDll = $key.GetValue('ServiceDll', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            if ($rawDll -is [string] -and $rawDll) {
+                $dll = Convert-ProcessPath ([Environment]::ExpandEnvironmentVariables($rawDll))
+                if ($dll) { $service.serviceDll = $dll } else { $issues.Add('Configured ServiceDll is not a supported local path.') }
+            }
+        }
+    } catch { $issues.Add('ServiceDll configuration is not accessible.') }
+    finally { if ($key) { $key.Dispose() } }
+    if ($issues.Count) { $service.errors = @($issues.ToArray()) }
+    return $service
+}
+
+function Get-NativeProcessSnapshot {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $errors = [Collections.Generic.List[string]]::new()
+    $result = [ordered]@{ at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); available = $false; processes = @(); errors = @(); truncated = $false; captureDurationMs = 0 }
+    try {
+        $rows = @(Get-ProcessRows)
+        if ($rows.Count -gt 4096) { $result.truncated = $true; $rows = @($rows | Select-Object -First 4096); $errors.Add('Process inventory was limited to 4096 entries.') }
+        $entries = [Collections.Generic.List[object]]::new()
+        $byPid = @{}
+        foreach ($row in $rows) {
+            $entry = Convert-ProcessEntry $row
+            if ($byPid.ContainsKey($entry.pid)) { continue }
+            $byPid[$entry.pid] = $entry
+            $entries.Add($entry)
+        }
+        $serviceRows = @()
+        $servicesAvailable = $true
+        try {
+            $serviceRows = @(Get-ProcessServiceRows)
+            if ($serviceRows.Count -gt 16384) { $result.truncated = $true; $serviceRows = @($serviceRows | Select-Object -First 16384); $errors.Add('Service inventory was limited to 16384 entries.') }
+        } catch { $servicesAvailable = $false; $errors.Add('Windows service inventory is unavailable; empty service lists do not establish the absence of hosted services.') }
+        if ($servicesAvailable) {
+            $after = @{}
+            try {
+                foreach ($row in @(Get-ProcessRows)) { $after[[long]$row.ProcessId] = Convert-ProcessStartedAt $row.CreationDate }
+            } catch { $errors.Add('Process identities could not be rechecked; service associations were withheld.') }
+            $servicesSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($serviceRow in $serviceRows) {
+                $entry = $byPid[[long]$serviceRow.ProcessId]
+                if (-not $entry) { continue }
+                if ($null -eq $entry.startedAt -or -not $after.ContainsKey($entry.pid) -or $after[$entry.pid] -ne $entry.startedAt) {
+                    if ($entry.errors -notcontains 'Service association withheld: process identity changed or became unavailable.') {
+                        $entry.errors += 'Service association withheld: process identity changed or became unavailable.'
+                    }
+                    continue
+                }
+                if (-not $servicesSeen.Add([string]$serviceRow.Name)) { continue }
+                if ($entry.services.Count -ge 128) {
+                    if ($entry.errors -notcontains 'Hosted service list was limited to 128 entries.') { $entry.errors += 'Hosted service list was limited to 128 entries.' }
+                    $result.truncated = $true
+                    continue
+                }
+                $entry.services += Get-HostedService $serviceRow
+            }
+        }
+        $result.processes = @($entries.ToArray())
+        $result.available = $true
+    } catch { $errors.Add('Windows process inventory could not be read.') }
+    $result.at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $result.captureDurationMs = $timer.ElapsedMilliseconds
+    $result.errors = @($errors.ToArray())
+    return $result
+}
+
+function Assert-ProcessIdentity($Identity) {
+    if ($Identity -isnot [pscustomobject] -or @($Identity.PSObject.Properties.Name | Where-Object { $_ -cnotin @('pid', 'startedAt') }).Count) { throw 'An exact process ID and start time are required.' }
+    foreach ($field in @('pid', 'startedAt')) {
+        $value = $Identity.$field
+        if ($value -isnot [ValueType] -or $value -is [bool] -or [double]::IsNaN([double]$value) -or
+            [double]::IsInfinity([double]$value) -or [double]$value -ne [Math]::Floor([double]$value) -or $value -lt 1) { throw 'An exact process ID and start time are required.' }
+    }
+    if ($Identity.pid -gt 4294967295 -or $Identity.startedAt -gt 8640000000000000) { throw 'Process identity is outside the supported range.' }
+}
+
+function Get-VerifiedProcess($Identity) {
+    $process = Get-Process -Id $Identity.pid -ErrorAction Stop
+    $startedAt = Convert-ProcessStartedAt $process.StartTime
+    if ($null -eq $startedAt -or $startedAt -ne $Identity.startedAt) { $process.Dispose(); throw 'Process identity changed or became unavailable. Refresh the process list.' }
+    return $process
+}
+
+function Get-InspectionModules($Process) {
+    # Enumerate OS module records only. Do not open modules or execute their code.
+    $modules = [Collections.Generic.List[object]]::new()
+    $errors = [Collections.Generic.List[string]]::new()
+    $truncated = $false
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    try {
+        $nativeModules = $Process.Modules
+        # PowerShell can suppress property-getter failures into null, even under
+        # ErrorActionPreference Stop. Null is not an observed empty module list.
+        if ($null -eq $nativeModules) { throw 'Module enumeration was unavailable.' }
+        foreach ($module in $nativeModules) {
+            if ($modules.Count -ge 256) { $truncated = $true; break }
+            $modulePath = Convert-ProcessPath $module.FileName
+            if (-not $modulePath) { if ($errors.Count -eq 0) { $errors.Add('One or more loaded module paths were unavailable or unsupported.') }; continue }
+            if ($seen.Add($modulePath)) { $modules.Add([ordered]@{ name = (Limit-ProcessText $module.ModuleName 260); path = $modulePath }) }
+        }
+    } catch { $errors.Add('Loaded modules are partially or wholly unavailable; Windows may protect this process.') }
+    return @{ modules = @($modules.ToArray()); truncated = $truncated; errors = @($errors.ToArray()) }
+}
+
+function Get-InspectionFile($Program) {
+    $errors = [Collections.Generic.List[string]]::new()
+    $result = @{ signature = @{ status = 'unknown' }; errors = @() }
+    $stream = $null
+    try {
+        $canonical = Convert-ProcessPath $Program
+        if (-not $canonical) { throw 'Executable path is unavailable.' }
+        $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($canonical))
+        if ($drive.DriveType -notin @([IO.DriveType]::Fixed, [IO.DriveType]::Removable)) { throw 'Remote executable inspection is not supported.' }
+        # Check each component before following it, including links to remote disks.
+        $componentPath = [IO.Path]::GetPathRoot($canonical)
+        $file = $null
+        foreach ($component in $canonical.Substring($componentPath.Length).Split('\')) {
+            $componentPath = [IO.Path]::Combine($componentPath, $component)
+            $file = Get-Item -LiteralPath $componentPath -Force -ErrorAction Stop
+            if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Executable inspection through filesystem links is not supported.' }
+        }
+        if ($file -isnot [IO.FileInfo] -or $file.PSIsContainer) { throw 'The executable is not a regular file.' }
+        # Hold a read lock through hashing and signature verification. A replacement
+        # or writable file cannot yield a hash from one binary and signature from another.
+        $stream = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        if ($stream.Length -gt 536870912) { throw 'Executable exceeds the 512 MiB inspection limit.' }
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try { $result.sha256 = ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
+        finally { $hasher.Dispose() }
+        try {
+            Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName -ErrorAction Stop
+            $status = switch ([string]$signature.Status) {
+                'Valid' { 'valid' } 'NotSigned' { 'unsigned' }
+                'HashMismatch' { 'invalid' } 'NotTrusted' { 'invalid' }
+                default { 'unknown' }
+            }
+            $result.signature = @{ status = $status; nativeStatus = (Limit-ProcessText $signature.Status 64) }
+            if ($signature.SignerCertificate) { $result.signature.publisher = Limit-ProcessText $signature.SignerCertificate.Subject 512 }
+        } catch { $errors.Add('Authenticode verification could not complete.') }
+    } catch { $errors.Add('Executable hash/signature unavailable: ' + (Limit-ProcessText $_.Exception.Message 256)) }
+    finally { if ($stream) { $stream.Dispose() } }
+    $result.errors = @($errors.ToArray())
+    return $result
+}
+
+function Get-NativeProcessInspection($Identity) {
+    Assert-ProcessIdentity $Identity
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $errors = [Collections.Generic.List[string]]::new()
+    $result = [ordered]@{ at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); available = $false; identity = $Identity
+        children = @(); modules = @(); modulesTruncated = $false; signature = @{ status = 'unknown' }; errors = @(); captureDurationMs = 0 }
+    $process = $null
+    try {
+        $process = Get-VerifiedProcess $Identity
+        $inventory = Get-NativeProcessSnapshot
+        if (-not $inventory.available) { throw 'Windows process inventory could not be read.' }
+        foreach ($message in $inventory.errors) { $errors.Add($message) }
+        $entry = @($inventory.processes | Where-Object { $_.pid -eq $Identity.pid -and $null -ne $_.startedAt -and $_.startedAt -eq $Identity.startedAt })
+        if ($entry.Count -ne 1) { throw 'Process exited or its identity changed. Refresh the process list.' }
+        $entry = $entry[0]
+        $check = Get-VerifiedProcess $Identity
+        $check.Dispose()
+        $moduleResult = Get-InspectionModules $process
+        $fileResult = Get-InspectionFile $entry.exe
+        # Slow metadata reads must not attach their results to a newly reused PID.
+        $check = Get-VerifiedProcess $Identity
+        $check.Dispose()
+        $parent = @($inventory.processes | Where-Object { $_.pid -ne $entry.pid -and $_.pid -eq $entry.parentPid -and $null -ne $_.startedAt -and $_.startedAt -le $entry.startedAt })
+        if ($parent.Count -eq 1) { $result.parent = $parent[0] }
+        elseif ($entry.parentPid -gt 0) { $errors.Add('Parent identity is unavailable; the original parent may have exited or its PID may have been reused.') }
+        $children = @($inventory.processes | Where-Object { $_.pid -ne $entry.pid -and $_.parentPid -eq $entry.pid -and $null -ne $_.startedAt -and $_.startedAt -ge $entry.startedAt })
+        if ($children.Count -gt 256) { $errors.Add('Child process list was limited to 256 entries.'); $children = @($children | Select-Object -First 256) }
+        $result.process = $entry
+        $result.children = $children
+        $result.modules = $moduleResult.modules
+        $result.modulesTruncated = $moduleResult.truncated
+        $result.signature = $fileResult.signature
+        if ($fileResult.sha256) { $result.sha256 = $fileResult.sha256 }
+        foreach ($message in @($moduleResult.errors) + @($fileResult.errors)) { $errors.Add($message) }
+        $result.available = $true
+    } catch { $errors.Add('Process inspection unavailable: ' + (Limit-ProcessText $_.Exception.Message 256)) }
+    finally { if ($process) { $process.Dispose() } }
+    $result.at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $result.errors = @($errors.ToArray())
+    $result.captureDurationMs = $timer.ElapsedMilliseconds
+    return $result
+}
+
 try {
     $raw = [Console]::In.ReadToEnd()
     if ($raw.Length -gt 65536) { throw 'Native request is too large.' }
@@ -340,6 +596,11 @@ try {
     $result = switch -CaseSensitive ($request.operation) {
         'status' { Get-NativeStatus }
         'snapshot' { Get-NativeSnapshot }
+        'processes' {
+            if ($null -ne $request.data) { throw 'This operation takes no arguments.' }
+            Get-NativeProcessSnapshot
+        }
+        'process-inspect' { Get-NativeProcessInspection $request.data }
         'list' {
             Import-Module NetSecurity -ErrorAction Stop
             $persistentRules = @(Get-OwnedRules)

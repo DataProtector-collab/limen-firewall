@@ -2,6 +2,33 @@
 
 Limen is an early native Windows application. A saved rule is not proof that packets are blocked. Results below are scoped to the version and scenario tested.
 
+## 1.3.0 process inspection and observation tools
+
+All **73 automated tests passed with zero skipped**, including actual Windows read smoke tests. Typecheck, ESLint, production build and both Windows packages passed. The new regression coverage distinguishes observation gaps, PID reuse and changing availability of process metadata from actual new connections; it also checks detector warmup, bounded memory, partial inspection failures and frozen destination references.
+
+The native process API was exercised in the disposable Windows 10 VM. A real inventory reported 128 processes. A shared `svchost.exe` hosted five services with configured service DLLs; its inspection returned 89 loaded module records and a valid Microsoft signature. An isolated Node process returned 35 modules, a SHA-256 matching an independent file read and a valid signature. A mismatched start time was rejected. A protected Defender process returned explicit missing-module/path information and unknown signature instead of invented inspection results.
+
+The **installed release application** then passed the following UI checks, using its real Electron renderer, preload, IPC and Windows backend:
+
+| Check | Observed result |
+| --- | --- |
+| Blackbox process selection | The dedicated executable's SHA-256 appeared in the UI and matched an independent file read; its loaded module list included the actual `ntdll.dll` record. |
+| Shared service host | Selecting a real `svchost.exe` displayed its five hosted services, their configured DLL data and a valid signature result. |
+| Drift Guard | A dedicated executable maintained a real loopback TCP connection to one endpoint. After multiple captures over at least ten seconds, the UI froze that destination. A second connection to a different port produced a visible drift event. |
+| Frozen reference | Exported evidence retained only the original destination in the reference and recorded the new destination as a deviation. The reference did not silently grow. |
+| Local export | The actual JSON download completed and contained five real capture samples, the frozen reference and its matching drift event. No replacement bridge, renderer state injection or synthetic socket fixture supplied the observations. |
+| Automatic policy changes | No Windows rule was created for the observation probe. Findings remained investigation hints. |
+| Layout and runtime | The installed UI was inspected at 980 × 650 and 390 × 844. No renderer errors occurred and the final mobile view had no document horizontal overflow. |
+| Cleanup | No dedicated probe process, Limen test process or debugging listener remained after the observation run. |
+
+An initial UI attempt found horizontal overflow in the narrow layout after the functional checks had passed. The navigation and chart containers were corrected, the installer rebuilt, and the complete installed UI sequence passed again. Screenshots show the [real Blackbox view](blackbox-native-1.3.0.png) and [real War Monitor](war-monitor-native-1.3.0.png). Measured zero traffic in a quiet sample is valid; missing readings are separately marked unavailable. The recorder screenshot still shows its initial warmup period.
+
+The Drift Guard scenario verifies detection of a new **observed TCP endpoint**, not malware detection or packet blocking. Other anomaly classes are covered by deterministic regression tests rather than claimed as attacks executed in the VM. Module and service relationships do not identify the originator of a socket. See [the observation guide](OBSERVABILITY.md) for coverage and retention limits.
+
+A separate regression run in the same installed 1.3.0 application verified the existing rule form and **real outbound TCP and UDP enforcement**. Before the UI-created rule, fresh TCP connections and validated DNS exchanges succeeded. Both failed with the block enabled, succeeded after disabling, failed after re-enabling, and succeeded after removal. The rejected-IP form preserved its input. TCP used a literal address resolved before rule creation, so a DNS failure could not stand in for TCP blocking. The exact probe rule, application test processes and debugging listener were confirmed removed. Global profiles and unrelated rules were unchanged.
+
+The installed application archive and native backend matched the release build. Installer SHA-256: `6351bc88f996583837c4ffbcd36ab204a76d01275eb42e00b9ed100937284a3d`. Portable build SHA-256: `e4365f07908152762fbecbe8a67bdbd1fd35695f1cdb6f3911e2c46dd2d9664a`. These UI checks used the installer build.
+
 ## 1.2.1 capture and desktop repair
 
 The reported false-zero display was reproduced in the installed 1.2.0 application on 2026-09-12 using its real Electron window and native bridge. Three successive snapshots returned 57 sockets with both adapter byte totals equal to zero, while three DNS baseline requests succeeded. The captured monitor displayed `0 B/s` in both directions. This was a counter-read defect, not evidence of an idle network. Windows' adapter statistics provider returned an empty successful result; the .NET interface API supplied positive counters on the same guest.

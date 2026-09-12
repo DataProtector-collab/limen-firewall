@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 — 2026-09-12
+
+- Added Blackbox Breaker: actual hosted Windows services, configured service DLLs, process relationships, loaded module paths and explicit executable SHA-256/Authenticode inspection. PID plus creation time prevents stale process selections from attaching to reused PIDs.
+- Added War Monitor with a bounded local flight recorder for host RX/TX, socket observations, capture duration and sampling gaps. Export session observations as local JSON.
+- Added explained heuristics for traffic bursts, new TCP peer fan-out, repeated connection appearances, newly observed listeners and sustained SYN pressure. Warmup, capture gaps and missing measurements are handled explicitly.
+- Added experimental Drift Guard: freeze an observed program destination set and review later deviations. The reference does not silently expand, does not claim complete coverage and never creates automatic rules.
+- Kept native firewall rules explicit and separate from observation hints. Shared service hosts are not falsely attributed to individual services or DLLs.
+
 ## 1.2.1 — 2026-09-12
 
 - Fixed a reproduced Windows VM failure: `Get-NetAdapterStatistics` returned an empty result while networking worked, and the monitor displayed false zero rates. A supported .NET interface-counter fallback now supplies actual measurements.

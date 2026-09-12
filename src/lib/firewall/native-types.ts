@@ -1,4 +1,5 @@
 import type { KernelSnapshot } from "./kernel-types";
+import type { ProcessIdentity, ProcessInspection, ProcessSnapshot } from "./observation-types";
 
 export interface NativeRuleInput {
   program: string;
@@ -41,6 +42,8 @@ export interface LimenNativeBridge {
   platform: "win32";
   getStatus(): Promise<NativeStatus>;
   getSnapshot(): Promise<KernelSnapshot>;
+  getProcessSnapshot?(): Promise<ProcessSnapshot>;
+  inspectProcess?(identity: ProcessIdentity): Promise<ProcessInspection>;
   listRules(): Promise<NativeRule[]>;
   applyRule(input: NativeRuleInput): Promise<NativeRule>;
   removeRule(id: string): Promise<unknown>;
