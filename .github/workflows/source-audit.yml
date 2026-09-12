@@ -1,0 +1,44 @@
+name: Source audit
+on:
+  push:
+    branches: [main, 'feat/limen-windows-product-overhaul']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: source-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only
+        run: git archive --format=zip --output=limen-source.zip HEAD
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: limen-source-${{ github.sha }}
+          path: limen-source.zip
+          if-no-files-found: error
+          retention-days: 7
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Runtime versions
+        run: node --version && npm --version
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Existing regression tests
+        run: npm test
+      - name: Build web prototype
+        run: npm run build
