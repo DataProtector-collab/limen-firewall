@@ -18,6 +18,7 @@
 - Fixed unstable process identities, invalid stored settings, empty rule persistence, lab rule direction/port matching and stale capture responses.
 - Added scrollable accessible dialogs, truthful profile/capture/error status, and labeled local/remote endpoints.
 - Added native validation, backend, state, snapshot and policy regression tests plus an opt-in isolated enforcement test.
+- Display ActiveStore enforcement status and registered external firewall providers instead of treating a stored rule as proof of packet blocking.
 
 ### Known limits
 
@@ -25,6 +26,7 @@
 - Windows socket tables cannot reliably identify direction or remote UDP peers; unavailable data stays unknown.
 - Current native workflow is translated into German and English; other language selections fall back to English for updated content.
 - Initial Windows binaries are unsigned. Rules persist after app exit/uninstall.
+- The development machine reports `Inactive / CategoryDisabled` and did not enforce the isolated block rule. See `docs/VALIDATION.md` for separate lifecycle and packet-test results.
 
 
 What landed, what broke, what got fixed. Newest on top.

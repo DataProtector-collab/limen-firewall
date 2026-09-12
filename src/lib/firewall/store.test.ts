@@ -171,3 +171,19 @@ test("uncertain mutation recovery is bounded even if the bridge stops responding
   assert.match(useFirewall.getState().nativeError!, /refresh timed out/);
   assert.equal(useFirewall.getState().nativeBusy, false);
 });
+
+test("native canonical executable paths require an apply response bound to the exact submitted alias", async () => {
+  const alias = { ...input, program: "C:\\PROGRA~1\\Example\\app.exe" };
+  const canonical = { ...rule, program: "C:\\Program Files\\Example\\app.exe" };
+  install(bridge({ applyRule: async () => ({ ...canonical, requestedProgram: alias.program }), listRules: async () => [canonical] }));
+  assert.equal(await useFirewall.getState().applyNativeRule(alias), true);
+
+  install(bridge({ applyRule: async () => canonical, listRules: async () => [canonical] }));
+  assert.equal(await useFirewall.getState().applyNativeRule(alias), false);
+
+  install(bridge({ applyRule: async () => ({ ...canonical, requestedProgram: "C:\\Other\\app.exe" }), listRules: async () => [canonical] }));
+  assert.equal(await useFirewall.getState().applyNativeRule(alias), false);
+
+  install(bridge({ applyRule: async () => ({ ...canonical, requestedProgram: alias.program }), listRules: async () => [{ ...canonical, program: "C:\\Other\\app.exe" }] }));
+  assert.equal(await useFirewall.getState().applyNativeRule(alias), false);
+});

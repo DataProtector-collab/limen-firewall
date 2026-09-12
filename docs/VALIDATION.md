@@ -31,7 +31,7 @@ For the read-only Windows smoke test, set `LIMEN_WINDOWS_READ_TEST=1` before run
 From an elevated terminal on a Windows test machine:
 
 ```sh
-node desktop/firewall-selftest.cjs --confirm-isolated-firewall-test --report artifacts/native-enforcement.json
+node desktop/firewall-selftest.cjs --confirm-isolated-firewall-test --report C:\Temp\limen-native-enforcement.json
 ```
 
 The test copies Windows' own `curl.exe` to a unique temporary directory, verifies a baseline connection, creates a rule only for that copy, checks blocking and recovery through toggles, and removes its rule and executable in `finally`. The default destination is GitHub HTTPS. `--lifecycle-only` skips the packet checks and explicitly records `enforcementTested: false`; it must not be cited as an enforcement pass.

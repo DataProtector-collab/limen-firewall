@@ -2,7 +2,7 @@
 
 **See Windows connections. Create real Windows Firewall rules for the programs you choose.**
 
-Limen **1.2.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release replaces that behavior with verified operating-system rule operations.
+Limen **1.2.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release writes rules to Windows and reads their saved fields and active-policy status back. Successful storage does not guarantee that traffic is blocked; see the [validation record](docs/VALIDATION.md).
 
 ![Limen connection interface with explicitly labeled synthetic test data](docs/monitor.png)
 
@@ -16,7 +16,7 @@ Use Windows 10/11 **x64**, with Windows PowerShell 5.1, the NetSecurity module, 
 
 1. Download **Limen-1.2.0-setup-x64.exe** for installation, or **Limen-1.2.0-portable-x64.exe** for the portable app.
 2. Starting the desktop app requests administrator privileges for Windows Firewall rule management. Without elevation, rule changes are unavailable.
-3. Open **Connections** to inspect observed programs. Create an explicit rule for a program, optionally limited to a literal remote IP, transport protocol, and port.
+3. Open **Monitor** or **Apps** to inspect observed programs. Create an explicit inbound or outbound rule for a program, optionally limited to a literal remote IP, TCP/UDP, and local or remote port.
 4. Use **Rules** to inspect, disable, or remove rules created by Limen.
 
 The initial release is **unsigned**. Verify the release SHA-256 checksums and use source builds if you need to inspect the application before running it. It is not a replacement for your organization's endpoint protection.
@@ -27,7 +27,7 @@ The initial release is **unsigned**. Verify the release SHA-256 checksums and us
 | --- | --- |
 | Windows capture | `Get-NetTCPConnection`, `Get-NetUDPEndpoint`, process paths, and adapter byte counters. |
 | Blocking and allowing | Explicit program rules in Windows Defender Firewall, created through `New-NetFirewallRule`. Changes are read back from Windows before the UI reports success. |
-| Rule scope | Program, direction, optional literal remote IP, TCP/UDP, and port. An IP rule is not a domain-name rule. |
+| Rule scope | A local `.exe` path, explicit inbound/outbound direction, optional literal remote IP, and either all protocols or TCP/UDP with optional local and remote ports. An IP rule is not a domain-name rule. |
 | Persistence | Native rules remain stored when Limen closes. Windows enforces them while the matching policy and filtering category are active. Limen reads their state at startup. |
 | Isolation | Local renderer files and a restricted Electron IPC bridge. No privileged HTTP server, account, cloud database, or remote web UI. |
 | Browser preview | An explicitly labeled simulation lab. It cannot inspect the visitor's computer or change Windows Firewall. |
@@ -90,11 +90,11 @@ Closing or uninstalling Limen does **not** remove its persistent Windows rules. 
 desktop/                  Electron main/preload, Windows backend, native tests
 src/lib/firewall/         Capture adapter, validated state, lab engine, tests
 src/components/firewall/  Monitor, programs, native/lab rules, settings, dialogs
-src/lib/i18n/             Nine interface languages
+src/lib/i18n/             German/English text and legacy locale fallbacks
 docs/                    Screenshots and validation notes
 ```
 
-The desktop entry is `src/main.tsx`; obsolete web-server, account, database and deployment scaffolding has been removed. English and German include the current native workflow; other interface languages use explicit English fallbacks where translations are not available.
+The desktop entry is `src/main.tsx`; obsolete web-server, account, database and deployment scaffolding has been removed. The current interface is translated into English and German. The seven other saved language selections currently display English; the language picker states this explicitly.
 
 ## License
 

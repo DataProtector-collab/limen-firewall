@@ -125,19 +125,40 @@ function Add-ActiveRuleStatus($Converted, $ActiveRule) {
     return $Converted
 }
 
+function Test-SameProgramPath($Actual, $Expected) {
+    if ($Actual -isnot [string] -or $Expected -isnot [string]) { return $false }
+    if ($Actual -ieq $Expected) { return $true }
+    # Windows expands DOS 8.3 aliases when storing program filters. Resolve only
+    # existing drive-qualified files, never URLs, UNC paths or command text.
+    if ($Actual -notmatch '^[a-zA-Z]:\\' -or $Expected -notmatch '^[a-zA-Z]:\\') { return $false }
+    try {
+        $actualFile = Get-Item -LiteralPath $Actual -Force -ErrorAction Stop
+        $expectedFile = Get-Item -LiteralPath $Expected -Force -ErrorAction Stop
+        return ($actualFile -is [IO.FileInfo] -and $expectedFile -is [IO.FileInfo] -and $actualFile.FullName -ieq $expectedFile.FullName)
+    } catch { return $false }
+}
+
 function Assert-MatchingRule($Actual, $Expected, [bool]$Enabled) {
-    if ($Actual.program -ine $Expected.program -or $Actual.action -cne $Expected.action -or
-        $Actual.direction -cne $Expected.direction -or $Actual.protocol -cne $Expected.protocol -or $Actual.enabled -ne $Enabled) {
-        throw 'Windows returned a different rule configuration. Refresh and inspect the rule.'
-    }
+    $mismatches = [Collections.Generic.List[string]]::new()
+    if (-not (Test-SameProgramPath $Actual.program $Expected.program)) { $mismatches.Add('program path') }
+    if ($Actual.action -cne $Expected.action) { $mismatches.Add('action') }
+    if ($Actual.direction -cne $Expected.direction) { $mismatches.Add('direction') }
+    if ($Actual.protocol -cne $Expected.protocol) { $mismatches.Add('protocol') }
+    if ($Actual.enabled -ne $Enabled) { $mismatches.Add('enabled') }
     foreach ($port in @('localPort', 'remotePort')) {
-        if ([string]$Actual.$port -cne [string]$Expected.$port) { throw 'Windows returned different port restrictions. Refresh and inspect the rule.' }
+        if ([string]$Actual.$port -cne [string]$Expected.$port) { $mismatches.Add($port) }
     }
     if ($null -ne $Expected.remoteAddress) {
-        if ($null -eq $Actual.remoteAddress -or -not [Net.IPAddress]::Parse($Actual.remoteAddress).Equals([Net.IPAddress]::Parse($Expected.remoteAddress))) {
-            throw 'Windows returned a different remote address. Refresh and inspect the rule.'
-        }
-    } elseif ($null -ne $Actual.remoteAddress) { throw 'Windows returned a different remote address scope.' }
+        try {
+            if ($null -eq $Actual.remoteAddress -or -not [Net.IPAddress]::Parse($Actual.remoteAddress).Equals([Net.IPAddress]::Parse($Expected.remoteAddress))) {
+                $mismatches.Add('remoteAddress')
+            }
+        } catch { $mismatches.Add('remoteAddress') }
+    } elseif ($null -ne $Actual.remoteAddress) { $mismatches.Add('remoteAddress') }
+    if ($mismatches.Count -gt 0) {
+        # Report field names without copying private executable paths or endpoints.
+        throw "Windows rule verification failed. Mismatched field(s): $($mismatches -join ', '). Refresh and inspect the rule."
+    }
 }
 
 function Get-NativeStatus {

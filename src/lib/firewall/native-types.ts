@@ -16,6 +16,9 @@ export interface NativeRule extends NativeRuleInput {
   createdAt: number;
   primaryStatus?: string;
   enforcementStatus?: string[];
+  // Apply responses only: the privileged backend binds the exact submitted path
+  // to the canonical executable path verified with Windows.
+  requestedProgram?: string;
 }
 
 export interface NativeStatus {

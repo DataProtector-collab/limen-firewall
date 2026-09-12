@@ -133,8 +133,12 @@ export const useFirewall = create<FirewallState>((set, get) => {
     },
     applyNativeRule: (input) => mutateNative(async () => {
       const rule = await getNativeBridge()!.applyRule(input);
+      const sameProgram = rule.program.toLowerCase() === input.program.toLowerCase();
+      // Windows can expand a DOS 8.3 path. Only the privileged apply response can
+      // attest that mapping; an unrelated program in the rule list is insufficient.
+      const requestBound = sameProgram || rule.requestedProgram === input.program;
       return (rules) => rules.some((r) => r.id === rule.id && r.enabled &&
-        r.program.toLowerCase() === input.program.toLowerCase() && r.action === input.action &&
+        requestBound && r.program.toLowerCase() === rule.program.toLowerCase() && r.action === input.action &&
         r.direction === input.direction && r.protocol === input.protocol &&
         canonicalAddress(r.remoteAddress) === canonicalAddress(input.remoteAddress) && r.remotePort === input.remotePort && r.localPort === input.localPort);
     }),

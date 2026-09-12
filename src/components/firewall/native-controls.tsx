@@ -163,6 +163,7 @@ export function NativeRuleEditor({
   const status = useFirewall((s) => s.nativeStatus);
   const busy = useFirewall((s) => s.nativeBusy);
   const apply = useFirewall((s) => s.applyNativeRule);
+  const setView = useFirewall((s) => s.setView);
   const [action, setAction] = useState<"allow" | "block">("block");
   const [specific, setSpecific] = useState(Boolean(remoteIp));
   const [address, setAddress] = useState(remoteIp ?? "");
@@ -195,7 +196,12 @@ export function NativeRuleEditor({
               ...(protocol !== "ANY" && localPort ? { localPort: Number(localPort) } : {}),
               ...(protocol !== "ANY" && remotePort ? { remotePort: Number(remotePort) } : {}),
             });
-            if (ok) onClose();
+            if (ok) {
+              onClose();
+              // Storage can succeed while ActiveStore reports an inactive rule.
+              // Show that result immediately instead of returning to the monitor.
+              setView("rules");
+            }
           }}
         >
           <div>

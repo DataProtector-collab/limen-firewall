@@ -77,7 +77,12 @@ function createBackend({ scriptPath = path.join(__dirname, 'windows-firewall.ps1
     if (operation === 'inspect') return mutationTail.then(() => run(operation, payload));
     if (['apply', 'remove', 'enabled'].includes(operation)) {
       rulesGeneration += 1;
-      const next = mutationTail.then(() => run(operation, payload));
+      const requestedProgram = operation === 'apply' ? payload.program : undefined;
+      const next = mutationTail.then(() => run(operation, payload)).then((result) => operation === 'apply'
+        // Bind canonical Windows output to this exact caller request, after native
+        // readback verification. List results never invent this per-call attestation.
+        ? { ...result, requestedProgram }
+        : result);
       mutationTail = next.catch(() => {});
       return next;
     }

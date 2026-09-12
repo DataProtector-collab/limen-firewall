@@ -84,6 +84,17 @@ test('propagates native failures without turning them into success or an empty l
   await assert.rejects(createBackend({ platform: 'win32', spawnProcess: malformed.spawn }).invoke('list'), /Cannot read/);
 });
 
+test('successful apply binds the canonical Windows path to the exact caller request', async () => {
+  const canonical = { ...validRule, program: 'C:\\Program Files\\Example\\app.exe', id, enabled: true, createdAt: 1 };
+  const mock = fakeSpawn({ ok: true, data: canonical });
+  const backend = createBackend({ platform: 'win32', spawnProcess: mock.spawn });
+  const requestedProgram = 'C:\\PROGRA~1\\Example\\app.exe';
+  const result = await backend.invoke('apply', { ...validRule, program: requestedProgram });
+  assert.equal(result.program, canonical.program);
+  assert.equal(result.requestedProgram, requestedProgram);
+  assert.equal(canonical.requestedProgram, undefined, 'The annotation must not mutate shared native response objects.');
+});
+
 test('deduplicates concurrent reads but serializes distinct mutations', async () => {
   const mock = fakeSpawn();
   const backend = createBackend({ platform: 'win32', spawnProcess: mock.spawn });

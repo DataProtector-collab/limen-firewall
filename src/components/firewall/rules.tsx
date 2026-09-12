@@ -54,47 +54,49 @@ export function RulesView() {
           {!status?.elevated ? <p className="text-sm text-warn">{t("native.adminNo")}</p> : null}
           {nativeRules.length ? (
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-              {nativeRules.map((r) => (
-                <li key={r.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant={r.action === "allow" ? "allow" : "block"}>
-                        {t(r.action === "allow" ? "native.ruleAllow" : "native.ruleBlock")}
-                      </Badge>
-                      <Badge variant="info">{t("native.saved")}</Badge>
-                      <Badge>{t(r.enabled ? "native.on" : "native.off")}</Badge>
+              {[...nativeRules]
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .map((r) => (
+                  <li key={r.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={r.action === "allow" ? "allow" : "block"}>
+                          {t(r.action === "allow" ? "native.ruleAllow" : "native.ruleBlock")}
+                        </Badge>
+                        <Badge variant="info">{t("native.saved")}</Badge>
+                        <Badge>{t(r.enabled ? "native.on" : "native.off")}</Badge>
+                      </div>
+                      <p dir="ltr" className="mt-2 break-all font-mono text-xs">
+                        {r.program}
+                      </p>
+                      <p className="mt-1 break-all text-xs text-muted">
+                        {r.remoteAddress || t("native.allHosts")} ·{" "}
+                        {directionLabel(r.direction, lang)} · {r.protocol} · {t("field.local")}:{" "}
+                        {r.localPort ?? "*"} · {t("field.target")}: {r.remotePort ?? "*"}
+                      </p>
+                      <RuleEnforcement rule={r} />
                     </div>
-                    <p dir="ltr" className="mt-2 break-all font-mono text-xs">
-                      {r.program}
-                    </p>
-                    <p className="mt-1 break-all text-xs text-muted">
-                      {r.remoteAddress || t("native.allHosts")} ·{" "}
-                      {directionLabel(r.direction, lang)} · {r.protocol} · {t("field.local")}:{" "}
-                      {r.localPort ?? "*"} · {t("field.target")}: {r.remotePort ?? "*"}
-                    </p>
-                    <RuleEnforcement rule={r} />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <label className="flex min-h-11 items-center">
-                      <Switch
-                        checked={r.enabled}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <label className="flex min-h-11 items-center">
+                        <Switch
+                          checked={r.enabled}
+                          disabled={!canWrite}
+                          onCheckedChange={(enabled) => void toggleNative(r.id, enabled)}
+                          aria-label={t("native.toggle", { app: r.program })}
+                        />
+                      </label>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         disabled={!canWrite}
-                        onCheckedChange={(enabled) => void toggleNative(r.id, enabled)}
-                        aria-label={t("native.toggle", { app: r.program })}
-                      />
-                    </label>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={!canWrite}
-                      onClick={() => void removeNative(r.id)}
-                      aria-label={t("native.remove", { app: r.program })}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
+                        onClick={() => void removeNative(r.id)}
+                        aria-label={t("native.remove", { app: r.program })}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
             </ul>
           ) : (
             <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted">

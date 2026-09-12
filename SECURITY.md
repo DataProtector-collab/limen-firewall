@@ -1,6 +1,6 @@
 # Security model
 
-Limen 1.2 is an early Windows Firewall rule manager and connection monitor, not a packet interception driver. Do not rely on observation prompts to hold or prevent an application's first connection.
+Limen 1.2 is an early Windows Firewall rule manager and connection monitor, not a packet interception driver. Real sockets are observed after creation; Limen does not hold connection attempts for approval. Only explicit rule operations change Windows rules. Simulation prompts have no operating-system effect.
 
 ## Privilege boundary
 
@@ -14,10 +14,11 @@ Rules are scoped to explicit executable paths and managed by Limen's own rule id
 
 - A compromised administrator account can change rules regardless of Limen.
 - A program-path rule follows that path, not a cryptographic binary identity. Replacing or relocating an executable changes the practical protection.
-- Domain names and short-lived UDP remote peers are not available from endpoint enumeration. IP rules apply to the selected literal IP only.
+- Capture supplies IP endpoints rather than domain identities. UDP endpoint enumeration provides no remote peer. IP rules apply to the selected literal IP only.
 - Local administrator rules can be superseded or disabled by domain policy. An allow rule does not override an explicit block rule.
+- A rule can be saved and enabled but inactive in Windows' active policy, for example when a filtering category is disabled. The UI reports ActiveStore status and registered external firewall providers. Even `OK / Full` is Windows-reported status, not a successful packet-blocking test; see [the validation record](docs/VALIDATION.md).
 - Rules persist in Windows after closing or uninstalling Limen. Review them before uninstalling.
-- Process paths, signature verification, packet counts, and direction may be unavailable. The UI must never infer trust or packet delivery from missing data.
+- Process paths may be unavailable. Signature verification, per-process traffic measurement, and dropped-packet counts are not implemented. TCP direction is not inferred from port numbers. The UI does not infer trust or packet delivery from these missing measurements.
 - Releases are unsigned until the project obtains a signing certificate; verify published checksums.
 
 ## Reporting
