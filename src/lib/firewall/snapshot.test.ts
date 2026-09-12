@@ -37,12 +37,16 @@ test("a real snapshot cannot retain simulated blocking or fabricate application 
   assert.equal(conn.localIp, socket.localIp);
 });
 
-test("interface rates handle quiet intervals, reset counters and stale timestamps", () => {
+test("interface rates distinguish a measured quiet interval from an absent baseline or counter reset", () => {
   const previous = { at: 1000, rxBytes: 5000, txBytes: 9000 };
   assert.deepEqual(interfaceRates({ at: 3000, rxBytes: 7000, txBytes: 10000 }, previous), { rx: 1000, tx: 500 });
   assert.deepEqual(interfaceRates({ ...previous, at: 2000 }, previous), { rx: 0, tx: 0 });
-  assert.deepEqual(interfaceRates({ at: 2000, rxBytes: 10, txBytes: 10 }, previous), { rx: 0, tx: 0 });
-  assert.deepEqual(interfaceRates({ ...previous, at: 500 }, previous), { rx: 0, tx: 0 });
+  assert.equal(interfaceRates(previous), null);
+  assert.equal(interfaceRates({ at: 2000, rxBytes: 10, txBytes: 10 }, previous), null);
+  assert.equal(interfaceRates({ ...previous, at: 500 }, previous), null);
+  assert.equal(interfaceRates({ ...previous, at: 2000, rxBytes: NaN }, previous), null);
+  assert.equal(interfaceRates({ ...previous, at: 2000, trafficAvailable: false }, previous), null);
+  assert.equal(interfaceRates({ ...previous, at: 2000, counterSource: "different-adapter" }, previous), null);
 });
 
 test("native Windows states preserve established, bound and closing sockets accurately", () => {

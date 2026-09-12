@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 — 2026-09-12
+
+- Fixed a reproduced Windows VM failure: `Get-NetAdapterStatistics` returned an empty result while networking worked, and the monitor displayed false zero rates. A supported .NET interface-counter fallback now supplies actual measurements.
+- Require two comparable counter samples before displaying a rate. Reset the baseline when adapters change or counters reset, and show pending, stale, or unavailable capture explicitly.
+- Keep socket observations when traffic counters fail. Timestamp counters at the actual read and avoid discarding valid capture on unrelated settings changes.
+- Show connections and rule actions before the optional throughput chart, including at 980 × 650. Keep backend warnings visible while allowing routine details to collapse.
+- Default new rules to the whole program. A single remote IP restriction is an explicit choice, with scope summarized before saving.
+
 ## 1.2.0 — 2026-09-12
 
 ### Windows desktop

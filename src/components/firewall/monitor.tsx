@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,26 @@ export function MonitorView() {
   const rx = useFirewall((s) => s.kernelRx);
   const tx = useFirewall((s) => s.kernelTx);
   const live = useFirewall((s) => s.kernelLive);
+  const trafficReady = useFirewall((s) => s.kernelTrafficReady);
+  const lastSnapshotAt = useFirewall((s) => s.kernelLastSnapshotAt);
+  const pending = useFirewall((s) => s.capturePending);
+  const stale = useFirewall((s) => s.captureStale);
+  const trafficError = useFirewall((s) => s.trafficError);
+  const nativeRules = useFirewall((s) => s.nativeRules);
+  const setView = useFirewall((s) => s.setView);
+  const patchSettings = useFirewall((s) => s.patchSettings);
   const allowed = useFirewall((s) => s.allowedCount);
   const blocked = useFirewall((s) => s.blockedCount);
   const clearError = useFirewall((s) => s.clearNativeError);
   const [limit, setLimit] = useState(60);
+  const [now, setNow] = useState(Date.now);
   const [editor, setEditor] = useState<{ app: AppInfo; remoteIp?: string } | null>(null);
   const native = isNativeDesktop();
+  useEffect(() => {
+    if (!native) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [native]);
   const appMap = new Map([...APPS, ...apps].map((app) => [app.id, app]));
   const visible = conns.filter((c) => (c.source === "kernel" ? native : settings.labTraffic));
   const q = query.trim().toLowerCase();
@@ -54,7 +68,13 @@ export function MonitorView() {
       ].some((value) => value?.toLowerCase().includes(q))
     );
   });
-  const measured = native && settings.kernelCapture && live;
+  const measured = native && settings.kernelCapture && live && trafficReady;
+  const snapshotAge = lastSnapshotAt
+    ? Math.max(0, Math.floor((now - lastSnapshotAt) / 1000))
+    : null;
+  const snapshotTime = lastSnapshotAt
+    ? new Date(lastSnapshotAt).toLocaleTimeString(lang === "de" ? "de-DE" : "en-GB")
+    : null;
   const openEditor = (app: AppInfo, conn: Connection) => {
     clearError();
     const remoteIp =
@@ -67,60 +87,75 @@ export function MonitorView() {
     <div className="space-y-4">
       {native ? (
         <>
-          {!settings.kernelCapture ? (
-            <p className="text-sm text-warn">{t("monitor.paused")}</p>
-          ) : null}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <p
+                className={cn(
+                  "flex items-center gap-2 text-sm",
+                  stale || !settings.kernelCapture ? "text-warn" : "text-fg",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    live && settings.kernelCapture ? "bg-info" : "bg-warn",
+                  )}
+                />
+                {t(
+                  !settings.kernelCapture
+                    ? "status.paused"
+                    : stale
+                      ? "monitor.stale"
+                      : pending
+                        ? "monitor.updating"
+                        : live
+                          ? "status.observing"
+                          : "status.unavailable",
+                )}
+              </p>
+              <p className="text-xs text-muted">
+                {snapshotTime !== null && snapshotAge !== null
+                  ? t("monitor.lastRead", { time: snapshotTime, seconds: snapshotAge })
+                  : t("monitor.firstRead")}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!settings.kernelCapture ? (
+                <Button variant="outline" onClick={() => patchSettings({ kernelCapture: true })}>
+                  {t("monitor.resume")}
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={() => setView("rules")}>
+                {t("monitor.manageRules", { n: nativeRules.length })}
+              </Button>
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Stat
               label={t("stat.active")}
               value={String(visible.filter((c) => c.source === "kernel").length)}
-              hint={t(live ? "status.live" : "status.unavailable")}
+              hint={t(stale ? "monitor.stale" : live ? "status.live" : "status.unavailable")}
             />
             <Stat
               label={t("stat.rx")}
               value={measured ? fmtRate(rx) : "—"}
-              hint={t(measured ? "stat.hostHint" : "stat.na")}
+              hint={t(measured ? "stat.hostHint" : !trafficError && live ? "stat.wait" : "stat.na")}
             />
             <Stat
               label={t("stat.tx")}
               value={measured ? fmtRate(tx) : "—"}
-              hint={t(measured ? "stat.hostHint" : "stat.na")}
+              hint={t(measured ? "stat.hostHint" : !trafficError && live ? "stat.wait" : "stat.na")}
             />
           </div>
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <h2 className="text-sm font-medium">{t("stat.throughput")}</h2>
-            <p className="mt-1 text-xs text-muted">{t("stat.hostHint")}</p>
-            <div className="mt-3 h-28 w-full min-w-0" role="img" aria-label={t("stat.throughput")}>
-              {measured && samples.length > 2 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={samples} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                    <YAxis hide domain={[0, "auto"]} />
-                    <Area
-                      type="linear"
-                      dataKey="in"
-                      stroke="var(--color-allow)"
-                      fill="var(--color-allow)"
-                      fillOpacity={0.12}
-                      isAnimationActive={false}
-                    />
-                    <Area
-                      type="linear"
-                      dataKey="out"
-                      stroke="var(--color-info)"
-                      fill="var(--color-info)"
-                      fillOpacity={0.08}
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="flex h-full items-center justify-center text-xs text-muted">
-                  {t("stat.wait")}
-                </p>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-muted">{t("monitor.windowsHint")}</p>
+          {trafficError ? (
+            <p
+              role="alert"
+              className="break-words rounded-md border border-warn/40 bg-warn/10 p-3 text-sm text-warn"
+            >
+              {t("monitor.trafficUnavailable")}: {trafficError}
+            </p>
+          ) : null}
         </>
       ) : null}
       {settings.labTraffic ? (
@@ -135,6 +170,12 @@ export function MonitorView() {
         </div>
       ) : null}
       <div className="space-y-2">
+        {native ? (
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-medium">{t("monitor.connections")}</h2>
+            <p className="text-xs text-muted">{t("monitor.ruleHelp")}</p>
+          </div>
+        ) : null}
         <Input
           value={query}
           onChange={(e) => {
@@ -170,7 +211,10 @@ export function MonitorView() {
             const app = appMap.get(c.appId);
             const real = c.source === "kernel";
             return (
-              <li key={c.id} className="grid gap-3 p-4 lg:grid-cols-3">
+              <li
+                key={c.id}
+                className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-3"
+              >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="break-words text-sm font-medium">{app?.name || c.appId}</p>
@@ -205,7 +249,7 @@ export function MonitorView() {
                     {t("field.dir")}: {directionLabel(c.direction, lang)}
                   </div>
                 </dl>
-                <div className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 sm:col-span-2 md:col-span-1 md:flex-col md:items-end">
                   <p className={cn("text-xs text-muted", real ? "" : "font-mono")}>
                     {real
                       ? t("native.traffic")
@@ -239,6 +283,44 @@ export function MonitorView() {
           {t("monitor.more", { n: shown.length - limit })}
         </Button>
       ) : null}
+      {native ? (
+        <>
+          <details className="rounded-lg border border-border bg-surface p-3">
+            <summary className="cursor-pointer text-sm font-medium">{t("stat.throughput")}</summary>
+            <p className="mt-2 text-xs text-muted">{t("stat.hostHint")}</p>
+            <div className="mt-3 h-28 w-full min-w-0" role="img" aria-label={t("stat.throughput")}>
+              {measured && samples.length > 2 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={samples} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                    <YAxis hide domain={[0, "auto"]} />
+                    <Area
+                      type="linear"
+                      dataKey="in"
+                      stroke="var(--color-allow)"
+                      fill="var(--color-allow)"
+                      fillOpacity={0.12}
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="out"
+                      stroke="var(--color-info)"
+                      fill="var(--color-info)"
+                      fillOpacity={0.08}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="flex h-full items-center justify-center text-xs text-muted">
+                  {t(!trafficError && live ? "stat.wait" : "stat.na")}
+                </p>
+              )}
+            </div>
+          </details>
+          <p className="text-xs text-muted">{t("monitor.windowsHint")}</p>
+        </>
+      ) : null}
       {editor ? (
         <NativeRuleEditor
           app={editor.app}
@@ -252,7 +334,7 @@ export function MonitorView() {
 
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div className="rounded-lg border border-border bg-surface p-3">
       <p className="text-xs text-muted">{label}</p>
       <p className="mt-1 font-mono text-xl">{value}</p>
       <p className="mt-1 text-xs text-muted">{hint}</p>

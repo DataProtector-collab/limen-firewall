@@ -210,8 +210,76 @@ function Get-RuleDiagnostic($Rule) {
     }
 }
 
+function Get-DotNetNetworkInterfaces {
+    return @([Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces())
+}
+
+function Get-DotNetTrafficAdapters {
+    # The CIM statistics provider can return an empty successful result on valid
+    # Windows NIC drivers. Read the supported .NET interface API as an alternative.
+    # Exclude loopback, tunnel and unconfigured filter/pseudo interfaces: otherwise
+    # the same traffic can be counted again through inactive protocol bindings.
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($adapter in @(Get-DotNetNetworkInterfaces)) {
+        if ($adapter.OperationalStatus -ne [Net.NetworkInformation.OperationalStatus]::Up -or
+            $adapter.NetworkInterfaceType -in @([Net.NetworkInformation.NetworkInterfaceType]::Loopback, [Net.NetworkInformation.NetworkInterfaceType]::Tunnel)) { continue }
+        $addresses = @($adapter.GetIPProperties().UnicastAddresses | Where-Object {
+            -not [Net.IPAddress]::IsLoopback($_.Address) -and -not $_.Address.Equals([Net.IPAddress]::Any) -and -not $_.Address.Equals([Net.IPAddress]::IPv6Any)
+        })
+        if ($addresses.Count -eq 0) { continue }
+        $identity = [string]$adapter.Id
+        if (-not $identity) { throw 'An active network interface has no stable counter identity.' }
+        if (-not $seen.Add($identity)) { continue }
+        $statistics = $adapter.GetIPStatistics()
+        [pscustomobject]@{ InstanceID = $identity; Name = [string]$adapter.Name
+            ReceivedBytes = $statistics.BytesReceived; SentBytes = $statistics.BytesSent }
+    }
+}
+
+function Convert-TrafficCounters($Adapters, [string]$Source) {
+        if (@($Adapters).Count -eq 0) { throw 'Windows returned no usable network adapter counters.' }
+        $received = 0L; $sent = 0L
+        $identities = [Collections.Generic.List[string]]::new()
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($adapter in $Adapters) {
+            $identity = [string]$adapter.InstanceID
+            if (-not $identity) { $identity = [string]$adapter.Name }
+            if (-not $identity) { throw 'Windows returned an adapter without a stable counter identity.' }
+            if (-not $seen.Add($identity)) { continue }
+            foreach ($field in @('ReceivedBytes', 'SentBytes')) {
+                $value = $adapter.$field
+                if ($null -eq $value -or $value -isnot [ValueType] -or $value -is [bool] -or
+                    [double]::IsNaN([double]$value) -or [double]::IsInfinity([double]$value) -or
+                    [double]$value -lt 0 -or [double]$value -gt 9007199254740991 -or [double]$value -ne [Math]::Floor([double]$value)) {
+                    throw 'Windows returned missing or invalid adapter byte counters.'
+                }
+            }
+            $received += [long]$adapter.ReceivedBytes; $sent += [long]$adapter.SentBytes
+            if ($received -gt 9007199254740991 -or $sent -gt 9007199254740991) { throw 'Adapter byte totals exceeded the supported numeric range.' }
+            $identities.Add($identity)
+        }
+        return [ordered]@{ rxBytes = $received; txBytes = $sent; trafficAvailable = $true
+            counterSource = $Source + ':' + (ConvertTo-Json -InputObject @($identities | Sort-Object -Unique) -Compress) }
+}
+
+function Get-NativeTraffic {
+    try {
+        return Convert-TrafficCounters @(Get-NetAdapterStatistics -ErrorAction Stop) 'windows-netadapter'
+    } catch {
+        $primaryError = $_.Exception.Message
+    }
+    try {
+        # Never combine the two providers. Source and interface-set changes reset
+        # the UI's rate baseline before another measured rate is displayed.
+        return Convert-TrafficCounters @(Get-DotNetTrafficAdapters) 'windows-networkinterface'
+    } catch {
+        return [ordered]@{ rxBytes = 0; txBytes = 0; trafficAvailable = $false
+            trafficError = "Adapter counters unavailable. CIM: $primaryError . Network interfaces: $($_.Exception.Message)" }
+    }
+}
+
 function Get-NativeSnapshot {
-    $at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $captureTimer = [Diagnostics.Stopwatch]::StartNew()
     try {
         $tcp = @(Get-NetTCPConnection -ErrorAction Stop)
         $udp = @(Get-NetUDPEndpoint -ErrorAction Stop)
@@ -245,15 +313,20 @@ function Get-NativeSnapshot {
                 uid = -1; direction = 'unknown'
             })
         }
-        # Host adapter totals only. Windows endpoint tables do not provide per-process bytes.
-        $adapters = @(Get-NetAdapterStatistics -ErrorAction Stop)
-        $received = 0L; $sent = 0L
-        foreach ($adapter in $adapters) { $received += [long]$adapter.ReceivedBytes; $sent += [long]$adapter.SentBytes }
-        return [ordered]@{ at = $at; sockets = @($sockets.ToArray()); rxBytes = $received; txBytes = $sent
-            tcpInuse = $tcp.Count; udpInuse = $udp.Count; capture = 'windows'; available = $true; platform = 'win32' }
+        $traffic = Get-NativeTraffic
+        # Timestamp the measured counters rather than the beginning of a slow
+        # process/CIM enumeration. A counter failure must not erase valid sockets.
+        $snapshot = [ordered]@{ at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); sockets = @($sockets.ToArray())
+            rxBytes = $traffic.rxBytes; txBytes = $traffic.txBytes; trafficAvailable = $traffic.trafficAvailable
+            tcpInuse = $tcp.Count; udpInuse = $udp.Count; capture = 'windows'; available = $true; platform = 'win32'
+            captureDurationMs = $captureTimer.ElapsedMilliseconds }
+        if ($traffic.counterSource) { $snapshot.counterSource = $traffic.counterSource }
+        if ($traffic.trafficError) { $snapshot.trafficError = $traffic.trafficError }
+        return $snapshot
     } catch {
-        return [ordered]@{ at = $at; sockets = @(); rxBytes = 0; txBytes = 0; tcpInuse = 0; udpInuse = 0
-            capture = 'unavailable'; available = $false; platform = 'win32'; error = $_.Exception.Message }
+        return [ordered]@{ at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); sockets = @(); rxBytes = 0; txBytes = 0; tcpInuse = 0; udpInuse = 0
+            capture = 'unavailable'; available = $false; platform = 'win32'; error = $_.Exception.Message
+            trafficAvailable = $false; trafficError = $_.Exception.Message; captureDurationMs = $captureTimer.ElapsedMilliseconds }
     }
 }
 

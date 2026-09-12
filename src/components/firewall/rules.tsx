@@ -71,8 +71,10 @@ export function RulesView() {
                         {r.program}
                       </p>
                       <p className="mt-1 break-all text-xs text-muted">
-                        {r.remoteAddress || t("native.allHosts")} ·{" "}
-                        {directionLabel(r.direction, lang)} · {r.protocol} · {t("field.local")}:{" "}
+                        {r.remoteAddress
+                          ? `${t("native.oneIp")}: ${r.remoteAddress}`
+                          : t("native.allHosts")}{" "}
+                        · {directionLabel(r.direction, lang)} · {r.protocol} · {t("field.local")}:{" "}
                         {r.localPort ?? "*"} · {t("field.target")}: {r.remotePort ?? "*"}
                       </p>
                       <RuleEnforcement rule={r} />

@@ -14,6 +14,8 @@ export interface FirewallState {
   pending: PendingRequest[]; log: LogEntry[]; samples: TrafficSample[];
   kernelApps: AppInfo[]; kernelRx: number; kernelTx: number;
   kernelTcp: number; kernelUdp: number; kernelLive: boolean;
+  kernelTrafficReady: boolean; kernelLastSnapshotAt: number | null;
+  capturePending: boolean; captureStale: boolean; trafficError: string | null;
   captureError: string | null; blockedCount: number; allowedCount: number;
   nativeStatus: NativeStatus | null; nativeRules: NativeRule[];
   nativeBusy: boolean; nativeError: string | null;
@@ -110,6 +112,7 @@ export const useFirewall = create<FirewallState>((set, get) => {
     hydrated: false, view: "monitor", query: "", protoFilter: "ALL",
     settings: { ...defaultSettings }, rules: [], connections: [], pending: [], log: [], samples: [],
     kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false,
+    kernelTrafficReady: false, kernelLastSnapshotAt: null, capturePending: false, captureStale: false, trafficError: null,
     captureError: null, blockedCount: 0, allowedCount: 0,
     nativeStatus: null, nativeRules: [], nativeBusy: false, nativeError: null,
 
@@ -165,7 +168,8 @@ export const useFirewall = create<FirewallState>((set, get) => {
           settings,
           connections: state.connections.filter((c) => c.source === "lab" ? settings.labTraffic : settings.kernelCapture),
           pending: settings.labTraffic ? state.pending : [],
-          ...(modeChanged ? { samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null } : {}),
+          ...(modeChanged ? { samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null,
+            kernelTrafficReady: false, kernelLastSnapshotAt: null, capturePending: false, captureStale: false, trafficError: null } : {}),
         };
       });
       get().persist();
@@ -274,7 +278,8 @@ export const useFirewall = create<FirewallState>((set, get) => {
       } catch { /* Storage can be disabled in a browser; native rules remain in Windows. */ }
     },
     reset: () => {
-      set({ settings: { ...defaultSettings }, rules: [], connections: [], pending: [], log: [], samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null, blockedCount: 0, allowedCount: 0 });
+      set({ settings: { ...defaultSettings }, rules: [], connections: [], pending: [], log: [], samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null, blockedCount: 0, allowedCount: 0,
+        kernelTrafficReady: false, kernelLastSnapshotAt: null, capturePending: false, captureStale: false, trafficError: null });
       // Reset affects the demonstration and display only. OS rules require explicit deletion.
       get().persist();
     },

@@ -1,7 +1,7 @@
 import { APP_BY_ID, APPS, SYSTEM_APP_IDS, destinationsFor, randomOf } from "./catalog";
 import { getKernelSnapshot, type KernelSnapshot } from "./kernel";
 import { getNativeBridge } from "./native-types";
-import { interfaceRates, kernelApp, sockToConn } from "./snapshot";
+import { hasInterfaceCounters, interfaceRates, kernelApp, sockToConn } from "./snapshot";
 import { useFirewall } from "./store";
 import type { AppInfo, Connection, Protocol } from "./types";
 
@@ -9,8 +9,37 @@ let session = 0;
 let started = false;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let labTimer: ReturnType<typeof setInterval> | undefined;
+let freshnessTimer: ReturnType<typeof setTimeout> | undefined;
+let nativeTimer: ReturnType<typeof setInterval> | undefined;
+let unsubscribeCapture: (() => void) | undefined;
+let captureRevision = 0;
+let pollInFlight = false;
 let previousSnapshot: KernelSnapshot | undefined;
-let lastNativeRefresh = 0;
+const CAPTURE_STALE_MS = 15000;
+
+function watchCaptureFreshness() {
+  clearTimeout(freshnessTimer);
+  const currentSession = session;
+  freshnessTimer = setTimeout(() => {
+    freshnessTimer = undefined;
+    const state = useFirewall.getState();
+    if (!started || session !== currentSession || !state.settings.kernelCapture || state.settings.labTraffic) return;
+    previousSnapshot = undefined;
+    // Retain the last observed rows and timestamp, but never label old data live.
+    useFirewall.setState({ kernelLive: false, kernelTrafficReady: false, captureStale: true,
+      kernelRx: 0, kernelTx: 0, samples: [] });
+  }, CAPTURE_STALE_MS);
+}
+
+function captureUnavailable(error: string) {
+  clearTimeout(freshnessTimer);
+  freshnessTimer = undefined;
+  previousSnapshot = undefined;
+  const state = useFirewall.getState();
+  state.mergeKernelConnections([]);
+  state.setKernelStats({ rx: 0, tx: 0, tcp: 0, udp: 0, apps: [], live: false });
+  useFirewall.setState({ captureError: error, kernelTrafficReady: false, captureStale: false, trafficError: null, samples: [] });
+}
 
 function buildConnection(appId: string, inbound: boolean): Connection {
   const dest = randomOf(destinationsFor(appId));
@@ -38,15 +67,17 @@ function applyLabConnection(conn: Connection) {
 export function applySnapshot(snapshot: KernelSnapshot): void {
   const state = useFirewall.getState();
   if (!snapshot.available || snapshot.capture === "unavailable") {
-    previousSnapshot = undefined;
-    state.mergeKernelConnections([]);
-    state.setKernelStats({ rx: 0, tx: 0, tcp: 0, udp: 0, apps: [], live: false });
-    useFirewall.setState({ captureError: snapshot.error ?? "Live capture is unavailable." });
+    captureUnavailable(snapshot.error ?? "Live capture is unavailable.");
     return;
   }
-  if (previousSnapshot && snapshot.at <= previousSnapshot.at) return;
-  const rates = interfaceRates(snapshot, previousSnapshot);
-  previousSnapshot = snapshot;
+  if (!Number.isFinite(snapshot.at) || snapshot.at < 0) {
+    captureUnavailable("Windows capture returned an invalid measurement time.");
+    return;
+  }
+  if (state.kernelLastSnapshotAt !== null && snapshot.at <= state.kernelLastSnapshotAt) return;
+  const countersAvailable = hasInterfaceCounters(snapshot);
+  const rates = interfaceRates(snapshot, state.kernelLastSnapshotAt === null ? undefined : previousSnapshot);
+  previousSnapshot = countersAvailable ? snapshot : undefined;
   const previous = new Map(state.connections.filter((c) => c.source === "kernel").map((c) => [c.id, c]));
   const apps = new Map<string, AppInfo>();
   const connections = snapshot.sockets.map((sock) => {
@@ -57,14 +88,18 @@ export function applySnapshot(snapshot: KernelSnapshot): void {
   // Observing a socket does not authorize, pause, or block it. Only Windows
   // Firewall applies native rules; the socket state remains exactly observed.
   state.mergeKernelConnections(connections);
-  state.setKernelStats({ ...rates, tcp: snapshot.tcpInuse, udp: snapshot.udpInuse, apps: [...apps.values()], live: true });
-  useFirewall.setState({ captureError: null });
-  state.pushSample({ t: snapshot.at, in: rates.rx, out: rates.tx, blocked: 0 });
+  state.setKernelStats({ ...(rates ?? { rx: 0, tx: 0 }), tcp: snapshot.tcpInuse, udp: snapshot.udpInuse, apps: [...apps.values()], live: true });
+  useFirewall.setState({ captureError: null, kernelLastSnapshotAt: snapshot.at, kernelTrafficReady: rates !== null,
+    captureStale: false, trafficError: countersAvailable ? null : (snapshot.trafficError ?? "Windows adapter traffic counters are unavailable."),
+    ...(rates ? {} : { samples: [] }) });
+  if (rates) state.pushSample({ t: snapshot.at, in: rates.rx, out: rates.tx, blocked: 0 });
+  if (started) watchCaptureFreshness();
 }
 
 async function pollKernel(currentSession: number): Promise<void> {
-  if (!started || currentSession !== session) return;
+  if (!started || currentSession !== session || pollInFlight) return;
   const settings = useFirewall.getState().settings;
+  const currentCapture = captureRevision;
   if (!settings.kernelCapture || settings.labTraffic || !getNativeBridge()) {
     previousSnapshot = undefined;
     if (useFirewall.getState().kernelLive) {
@@ -72,27 +107,27 @@ async function pollKernel(currentSession: number): Promise<void> {
       useFirewall.getState().setKernelStats({ rx: 0, tx: 0, tcp: 0, udp: 0, apps: [], live: false });
     }
   } else {
+    pollInFlight = true;
+    useFirewall.setState({ capturePending: true });
+    if (!freshnessTimer) watchCaptureFreshness();
     try {
       const snapshot = await getKernelSnapshot();
       if (!started || currentSession !== session) return;
-      if (useFirewall.getState().settings !== settings) previousSnapshot = undefined;
+      if (captureRevision !== currentCapture) previousSnapshot = undefined;
       else applySnapshot(snapshot);
     } catch (error) {
       if (!started || currentSession !== session) return;
-      previousSnapshot = undefined;
-      if (useFirewall.getState().settings === settings) {
-        const state = useFirewall.getState();
-        state.mergeKernelConnections([]);
-        state.setKernelStats({ rx: 0, tx: 0, tcp: 0, udp: 0, apps: [], live: false });
-        useFirewall.setState({ captureError: error instanceof Error ? error.message : String(error) });
+      if (captureRevision === currentCapture) {
+        captureUnavailable(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (started && currentSession === session) {
+        pollInFlight = false;
+        useFirewall.setState({ capturePending: false });
       }
     }
   }
   if (started && currentSession === session) {
-    if (Date.now() - lastNativeRefresh > 15000) {
-      lastNativeRefresh = Date.now();
-      void useFirewall.getState().refreshNative();
-    }
     // Schedule after completion; expensive OS calls can never overlap.
     pollTimer = setTimeout(() => { void pollKernel(currentSession); }, 2000);
   }
@@ -103,10 +138,17 @@ function stopEngine() {
   started = false;
   clearTimeout(pollTimer);
   clearInterval(labTimer);
+  clearTimeout(freshnessTimer);
+  clearInterval(nativeTimer);
+  unsubscribeCapture?.();
   pollTimer = undefined;
   labTimer = undefined;
+  freshnessTimer = undefined;
+  nativeTimer = undefined;
+  unsubscribeCapture = undefined;
+  pollInFlight = false;
   previousSnapshot = undefined;
-  lastNativeRefresh = 0;
+  useFirewall.setState({ capturePending: false, kernelLive: false, kernelTrafficReady: false, captureStale: false, samples: [] });
 }
 
 export function applyInitialSnapshot(snapshot: KernelSnapshot) {
@@ -120,8 +162,26 @@ export function startEngine(initial?: KernelSnapshot | null) {
   started = true;
   const currentSession = ++session;
   previousSnapshot = undefined;
-  lastNativeRefresh = 0;
+  unsubscribeCapture = useFirewall.subscribe((state, previous) => {
+    if (state.settings.kernelCapture === previous.settings.kernelCapture && state.settings.labTraffic === previous.settings.labTraffic) return;
+    captureRevision++;
+    previousSnapshot = undefined;
+    clearTimeout(freshnessTimer);
+    freshnessTimer = undefined;
+    if (state.settings.kernelCapture && !state.settings.labTraffic && getNativeBridge()) {
+      if (pollInFlight) {
+        useFirewall.setState({ capturePending: true });
+        watchCaptureFreshness();
+      } else {
+        clearTimeout(pollTimer);
+        void pollKernel(currentSession);
+      }
+    }
+  });
   if (initial) applyInitialSnapshot(initial);
+  // Rule/status reads must remain available even while socket capture is slow.
+  void useFirewall.getState().refreshNative();
+  nativeTimer = setInterval(() => { void useFirewall.getState().refreshNative(); }, 15000);
   void pollKernel(currentSession);
   let nextLabPrompt = Date.now() + 1500;
   labTimer = setInterval(() => {

@@ -34,7 +34,16 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
   const lab = useFirewall((s) => s.settings.labTraffic);
   const live = useFirewall((s) => s.kernelLive);
   const error = useFirewall((s) => s.captureError);
+  const status = useFirewall((s) => s.nativeStatus);
   const native = isNativeDesktop();
+  const statusNeedsAttention = Boolean(
+    status &&
+    (!status.available ||
+      !status.elevated ||
+      !status.firewallEnabled ||
+      status.reason ||
+      status.profiles?.some((profile) => !profile.enabled)),
+  );
   useEffect(() => startEngine(initialSnap), [initialSnap]);
   useEffect(() => {
     document.documentElement.lang = language === "de" ? "de" : "en";
@@ -101,7 +110,33 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
             ) : null}
           </header>
           <main className="space-y-4 p-4 pb-24 md:p-6 md:pb-8">
-            <NativeStatusPanel detailed={view === "settings"} />
+            {native && view !== "settings" ? (
+              <details
+                open={statusNeedsAttention}
+                className="rounded-lg border border-border bg-surface"
+              >
+                <summary
+                  className={cn(
+                    "cursor-pointer px-3 py-2 text-xs",
+                    statusNeedsAttention ? "text-warn" : "text-muted",
+                  )}
+                >
+                  {t("native.title")} ·{" "}
+                  {t(
+                    !status
+                      ? "status.loading"
+                      : statusNeedsAttention
+                        ? "native.statusAttention"
+                        : "native.statusDetails",
+                  )}
+                </summary>
+                <div className="border-t border-border [&>section]:rounded-none [&>section]:border-0">
+                  <NativeStatusPanel />
+                </div>
+              </details>
+            ) : (
+              <NativeStatusPanel detailed={view === "settings"} />
+            )}
             <div className="sticky top-24 z-40">
               <NativeError dismissible />
             </div>

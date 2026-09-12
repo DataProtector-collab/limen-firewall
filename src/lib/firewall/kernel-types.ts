@@ -27,4 +27,8 @@ export interface KernelSnapshot {
   available: boolean;
   platform: string;
   error?: string;
+  trafficAvailable?: boolean;
+  trafficError?: string;
+  counterSource?: string;
+  captureDurationMs?: number;
 }

@@ -165,7 +165,7 @@ export function NativeRuleEditor({
   const apply = useFirewall((s) => s.applyNativeRule);
   const setView = useFirewall((s) => s.setView);
   const [action, setAction] = useState<"allow" | "block">("block");
-  const [specific, setSpecific] = useState(Boolean(remoteIp));
+  const [specific, setSpecific] = useState(false);
   const [address, setAddress] = useState(remoteIp ?? "");
   const [direction, setDirection] = useState<"in" | "out">("out");
   const [protocol, setProtocol] = useState<"TCP" | "UDP" | "ANY">("ANY");
@@ -350,6 +350,26 @@ export function NativeRuleEditor({
             <p className="text-sm text-warn">{t("native.adminNo")}</p>
           ) : null}
           <NativeError />
+          <section
+            aria-label={t("native.scopeSummary")}
+            className="space-y-1 rounded-md border border-border bg-elevated p-3 text-sm"
+          >
+            <p className="font-medium">{t("native.scopeSummary")}</p>
+            <p className="break-words">{app.name}</p>
+            <p>
+              {t(`native.${action}`)} · {t(`dir.${direction}`)} ·{" "}
+              {protocol === "ANY" ? t("native.anyTransport") : protocol}
+            </p>
+            <p className="break-all text-xs text-muted">
+              {specific ? `${t("native.oneIp")}: ${address.trim() || "—"}` : t("native.allHosts")}
+            </p>
+            {protocol !== "ANY" && (localPort || remotePort) ? (
+              <p className="text-xs text-muted">
+                {t("native.localPort")}: {localPort || t("native.anyPort")} ·{" "}
+                {t("native.remotePort")}: {remotePort || t("native.anyPort")}
+              </p>
+            ) : null}
+          </section>
           <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               {t("btn.cancel")}

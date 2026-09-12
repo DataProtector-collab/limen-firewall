@@ -1,4 +1,4 @@
-import type { KernelSocket } from "./kernel-types";
+import type { KernelSnapshot, KernelSocket } from "./kernel-types";
 import type { AppInfo, Connection, ConnState } from "./types";
 
 export function appIdForKernel(sock: KernelSocket): string {
@@ -40,11 +40,22 @@ export function sockToConn(sock: KernelSocket, prev?: Connection): Connection {
   };
 }
 
-export function interfaceRates(current: { at: number; rxBytes: number; txBytes: number }, previous?: { at: number; rxBytes: number; txBytes: number }): { rx: number; tx: number } {
-  if (!previous || current.at <= previous.at) return { rx: 0, tx: 0 };
+type InterfaceCounters = Pick<KernelSnapshot, "at" | "rxBytes" | "txBytes" | "trafficAvailable" | "counterSource">;
+
+export function hasInterfaceCounters(snapshot: InterfaceCounters): boolean {
+  return snapshot.trafficAvailable !== false &&
+    [snapshot.at, snapshot.rxBytes, snapshot.txBytes].every((value) => Number.isFinite(value) && value >= 0);
+}
+
+export function interfaceRates(current: InterfaceCounters, previous?: InterfaceCounters): { rx: number; tx: number } | null {
+  // A rate needs two comparable measurements. Missing counters, adapter changes,
+  // and counter resets require a new baseline; none establish zero traffic.
+  if (!previous || !hasInterfaceCounters(current) || !hasInterfaceCounters(previous) ||
+      current.at <= previous.at || current.counterSource !== previous.counterSource ||
+      current.rxBytes < previous.rxBytes || current.txBytes < previous.txBytes) return null;
   const seconds = (current.at - previous.at) / 1000;
   return {
-    rx: Number.isFinite(current.rxBytes) ? Math.max(0, current.rxBytes - previous.rxBytes) / seconds : 0,
-    tx: Number.isFinite(current.txBytes) ? Math.max(0, current.txBytes - previous.txBytes) / seconds : 0,
+    rx: (current.rxBytes - previous.rxBytes) / seconds,
+    tx: (current.txBytes - previous.txBytes) / seconds,
   };
 }

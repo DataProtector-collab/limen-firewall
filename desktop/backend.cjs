@@ -6,7 +6,8 @@ const { validateRequest } = require('./validation.cjs');
 
 function unavailableSnapshot(reason, platform) {
   return { at: Date.now(), sockets: [], rxBytes: 0, txBytes: 0, tcpInuse: 0, udpInuse: 0,
-    capture: 'unavailable', available: false, platform, error: reason };
+    capture: 'unavailable', available: false, platform, error: reason,
+    trafficAvailable: false, trafficError: reason, captureDurationMs: 0 };
 }
 
 function createBackend({ scriptPath = path.join(__dirname, 'windows-firewall.ps1'),

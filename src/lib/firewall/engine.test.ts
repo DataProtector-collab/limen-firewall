@@ -37,6 +37,41 @@ test("unavailable snapshots clear real rows and rates instead of claiming live d
   assert.equal(useFirewall.getState().kernelRx, 0);
   assert.deepEqual(useFirewall.getState().connections, []);
   assert.equal(useFirewall.getState().captureError, "Access denied");
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
+  assert.deepEqual(useFirewall.getState().samples, []);
+});
+
+test("the initial counter baseline never claims a zero rate, while subsequent measured quiet traffic does", () => {
+  applySnapshot(snapshot);
+  assert.equal(useFirewall.getState().kernelLive, true);
+  assert.equal(useFirewall.getState().kernelLastSnapshotAt, 1000);
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
+  assert.deepEqual(useFirewall.getState().samples, []);
+  applySnapshot({ ...snapshot, at: 3000 });
+  assert.equal(useFirewall.getState().kernelTrafficReady, true);
+  assert.deepEqual(useFirewall.getState().samples, [{ t: 3000, in: 0, out: 0, blocked: 0 }]);
+  applySnapshot({ ...snapshot, at: 5000, rxBytes: 7000, txBytes: 4000 });
+  assert.equal(useFirewall.getState().kernelRx, 3000);
+  assert.equal(useFirewall.getState().kernelTx, 1000);
+});
+
+test("counter failure leaves socket observations available and recovery requires two new counter reads", () => {
+  applySnapshot(snapshot);
+  applySnapshot({ ...snapshot, at: 2000, rxBytes: 5000 });
+  assert.equal(useFirewall.getState().kernelTrafficReady, true);
+  applySnapshot({ ...snapshot, at: 3000, rxBytes: 0, txBytes: 0, trafficAvailable: false, trafficError: "Adapter read failed" });
+  assert.equal(useFirewall.getState().kernelLive, true);
+  assert.equal(useFirewall.getState().connections.length, 1);
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
+  assert.equal(useFirewall.getState().trafficError, "Adapter read failed");
+  assert.deepEqual(useFirewall.getState().samples, []);
+  applySnapshot({ ...snapshot, at: 4000, rxBytes: 9000 });
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
+  assert.equal(useFirewall.getState().trafficError, null);
+  applySnapshot({ ...snapshot, at: 5000, rxBytes: 10000 });
+  assert.equal(useFirewall.getState().kernelTrafficReady, true);
+  assert.equal(useFirewall.getState().kernelRx, 1000);
+  assert.equal(useFirewall.getState().samples.length, 1);
 });
 
 test("new real sockets never trigger simulated prompts or fake decision counts", () => {
@@ -85,6 +120,72 @@ test("turning capture off rejects an in-flight snapshot", async () => {
   await flush();
   assert.equal(useFirewall.getState().kernelLive, false);
   assert.deepEqual(useFirewall.getState().connections, []);
+});
+
+test("a slow pending capture becomes stale without overlapping reads or inventing traffic", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  let reads = 0;
+  const pending: Array<(value: KernelSnapshot) => void> = [];
+  window.limen = {
+    platform: "win32", getSnapshot: () => { reads++; return new Promise((done) => { pending.push(done); }); },
+    getStatus: async () => ({ platform: "win32", available: true, elevated: false, firewallEnabled: true, backend: "windows-firewall" }),
+    listRules: async () => [], applyRule: async () => { throw new Error("unused"); },
+    removeRule: async () => undefined, setRuleEnabled: async () => { throw new Error("unused"); },
+  };
+  stop = startEngine();
+  assert.equal(useFirewall.getState().capturePending, true);
+  pending.shift()!(snapshot);
+  await flush();
+  assert.equal(useFirewall.getState().capturePending, false);
+  context.mock.timers.tick(2000);
+  pending.shift()!({ ...snapshot, at: 3000, rxBytes: 7000 });
+  await flush();
+  assert.equal(useFirewall.getState().kernelTrafficReady, true);
+  assert.equal(useFirewall.getState().kernelRx, 3000);
+  context.mock.timers.tick(2000);
+  assert.equal(useFirewall.getState().capturePending, true);
+  context.mock.timers.tick(13000);
+  assert.equal(reads, 3);
+  assert.equal(useFirewall.getState().captureStale, true);
+  assert.equal(useFirewall.getState().kernelLive, false);
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
+  assert.equal(useFirewall.getState().kernelLastSnapshotAt, 3000);
+  assert.equal(useFirewall.getState().connections.length, 1); // Last observation, explicitly stale.
+  assert.deepEqual(useFirewall.getState().samples, []);
+  pending.shift()!({ ...snapshot, at: 18000, rxBytes: 9000 });
+  await flush();
+  assert.equal(useFirewall.getState().captureStale, false);
+  assert.equal(useFirewall.getState().kernelLive, true);
+  assert.equal(useFirewall.getState().kernelTrafficReady, false); // No rate across the capture gap.
+  assert.equal(useFirewall.getState().capturePending, false);
+});
+
+test("unrelated settings do not discard a pending observation, but pausing and resuming capture does", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const pending: Array<(value: KernelSnapshot) => void> = [];
+  window.limen = {
+    platform: "win32", getSnapshot: () => new Promise((done) => { pending.push(done); }),
+    getStatus: async () => ({ platform: "win32", available: true, elevated: false, firewallEnabled: true, backend: "windows-firewall" }),
+    listRules: async () => [], applyRule: async () => { throw new Error("unused"); },
+    removeRule: async () => undefined, setRuleEnabled: async () => { throw new Error("unused"); },
+  };
+  stop = startEngine();
+  useFirewall.getState().patchSettings({ language: "en" });
+  pending.shift()!(snapshot);
+  await flush();
+  assert.equal(useFirewall.getState().kernelLastSnapshotAt, 1000);
+  context.mock.timers.tick(2000);
+  useFirewall.getState().patchSettings({ kernelCapture: false });
+  useFirewall.getState().patchSettings({ kernelCapture: true });
+  pending.shift()!({ ...snapshot, at: 3000 });
+  await flush();
+  assert.equal(useFirewall.getState().kernelLastSnapshotAt, null);
+  assert.equal(useFirewall.getState().kernelLive, false);
+  context.mock.timers.tick(2000);
+  pending.shift()!({ ...snapshot, at: 5000 });
+  await flush();
+  assert.equal(useFirewall.getState().kernelLastSnapshotAt, 5000);
+  assert.equal(useFirewall.getState().kernelTrafficReady, false);
 });
 
 test("lab traffic requires explicit opt-in and cannot impersonate a native process", () => {

@@ -1,5 +1,5 @@
 export const APP_NAME = "Limen";
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 
 export interface ReleaseNote {
   version: string;
@@ -9,6 +9,17 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.2.1",
+    date: "2026-09-12",
+    title: "Working VM traffic counters and visible rule controls",
+    items: [
+      "Use real Windows interface counters when a driver returns no adapter statistics.",
+      "Show capture freshness and unavailable measurements instead of false zero traffic.",
+      "Put connections and rule actions before the optional throughput chart.",
+      "Default program rules to all remote addresses; make an IP restriction explicit before saving.",
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-09-12",
