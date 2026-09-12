@@ -7,6 +7,7 @@ import { directionLabel, initials, protoLabel } from "@/lib/firewall/format";
 import { useFirewall } from "@/lib/firewall/store";
 import type { DecisionScope } from "@/lib/firewall/types";
 import { useT } from "@/lib/i18n/use-t";
+import { APP_NAME } from "@/lib/version";
 import { cn } from "@/lib/utils";
 
 export function PromptOverlay() {
@@ -48,7 +49,7 @@ export function PromptOverlay() {
           {rest > 0 ? (
             <Badge variant="warn">{t("prompt.queue", { n: rest })}</Badge>
           ) : (
-            <span className="font-mono text-xs text-subtle">Aegis</span>
+            <span className="font-mono text-xs text-subtle">{APP_NAME}</span>
           )}
         </div>
 

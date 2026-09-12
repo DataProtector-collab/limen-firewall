@@ -1,66 +1,80 @@
-# Aegis
+# Limen
 
-Windows-Firewall, die bei *ausgehenden* Verbindungen nachfragt. Version **1.1.0**.
+Ask-first firewall. An app tries to go online — you allow or block. Version **1.1.1**.
 
-Die eingebaute Windows-Firewall ist für Inbound ganz okay. Sobald Chrome, Discord oder irgendein Updater aus `%TEMP%` nach draußen will, passiert nichts. Kein Dialog, keine Chance. Aegis dreht das um.
+*Limen* is Latin for threshold. Every outbound socket has to cross it. Not another “Aegis”.
 
-Sobald eine App eine Verbindung aufbauen will, kommt das hier:
+| | |
+| --- | --- |
+| EN | Ask-first firewall. App wants the network: allow or block. |
+| DE | Firewall mit Nachfrage. App will raus: zulassen oder blockieren. |
+| 中文 | 先问再放行。应用要上网：允许或拦截。 |
+| हिन्दी | पहले पूछो। ऐप नेटवर्क चाहे: अनुमति या रोक। |
+| ES | Firewall que pregunta. La app quiere salir: permitir o bloquear. |
+| FR | Pare-feu qui demande. Une app sort : autoriser ou bloquer. |
+| العربية | جدار ناري يسأل. التطبيق يريد الشبكة: سماح أو حظر. |
+| বাংলা | আগে জিজ্ঞাসা। অ্যাপ নেট চায়: অনুমতি বা ব্লক। |
+| PT | Firewall que pergunta. A app quer a rede: permitir ou bloquear. |
+
+UI: English · Deutsch · 中文 · हिन्दी · Español · Français · العربية · বাংলা · Português. Default is German. Switch under Settings. Arabic is RTL.
+
+Windows’ own firewall is fine for inbound. Chrome, Discord, some updater from `%TEMP%` going *out*? Silence. No prompt, no chance. Limen flips that.
+
+When an app opens a connection you get this:
 
 ```
-Google Chrome  ·  chrome.exe  ·  Google LLC (signiert)
+Google Chrome  ·  chrome.exe  ·  Google LLC (signed)
 
-versucht, eine Internetverbindung herzustellen.
+is trying to connect to the internet.
 
-Ziel        www.google.com
+Target      www.google.com
 IP          142.250.185.46
-Protokoll   HTTPS
+Protocol    HTTPS
 Port        443
-Richtung    Ausgehend
+Direction   Outbound
 
-Regel gilt für:  Diesmal  |  App + Ziel  |  Gesamte App
+Rule applies to:  This time  |  App + host  |  Whole app
 
-[ Blockieren ]                    [ Zulassen ]
+[ Block ]                         [ Allow ]
 ```
 
-Genau das, was TinyWall / Little Snitch auf dem Mac machen. Nur halt als Konsole.
+Same idea as TinyWall / Little Snitch. Just a console.
 
 <p align="center">
-  <img src="docs/prompt.png" alt="Aegis Verbindungsdialog: Chrome will zu google.com" width="720" />
+  <img src="docs/prompt.png" alt="Limen prompt: Chrome wants google.com" width="720" />
 </p>
 
-## 1.1 — was neu ist
+## 1.1 — kernel capture
 
-Ab 1.1 liest Aegis die Sockettabelle direkt aus dem Kernel. `/proc/net/tcp`, `tcp6`, `udp`, `udp6`. Inodes werden über die Filedeskriptoren der Prozesse auf PID und Binary gelegt. Der Durchsatz kommt von `/proc/net/dev`. Ohne das ist eine Firewall nur ein schönes Panel.
+From 1.1 the console reads the kernel socket table. `/proc/net/tcp`, `tcp6`, `udp`, `udp6`. Inodes are mapped to PID and binary through process file descriptors. Throughput comes from `/proc/net/dev`. Without that a firewall is just a panel.
 
-Unbekannte Remote-Sockets ohne Regel gehen durch denselben Dialog. Loopback und Listen-Ports siehst du in der Tabelle, sie nerven dich aber nicht. node, Vite und der Preview-Proxy sind vorab erlaubt — sonst legt die Konsole sich selbst lahm.
+Unknown remote sockets with no rule go through the same prompt. Loopback and listen sockets show up in the table; they don’t nag. node, Vite and the preview proxy are pre-allowed so the console doesn’t hang itself.
 
-Acht Sprachen dazu, die weltweit am häufigsten gesprochen werden: English, 中文, हिन्दी, Español, Français, العربية, বাংলা, Português. Deutsch bleibt Default. Arabisch klappt das Layout um (RTL). Umschalten unter Einstellungen, bleibt gespeichert.
+The Windows lab (Chrome, Discord, …) is still there, off by default. Turn it on if you want the prompt without a real socket.
 
-Das Windows-Labor (Chrome, Discord, …) ist noch da, aber aus. Anschalten, wenn du den Dialog ohne echten Socket testen willst.
+What changed per version: [CHANGELOG.md](CHANGELOG.md). How numbers work: [docs/VERSIONING.md](docs/VERSIONING.md). Settings shows the same list without markdown.
 
-Was sich an der Nummer geändert hat, steht in [CHANGELOG.md](CHANGELOG.md). Wie Versionen laufen: [docs/VERSIONING.md](docs/VERSIONING.md). Unter Einstellungen dieselbe Liste nochmal, ohne Markdown.
+## What it does
 
-## Was es kann
+Live table: process, PID, protocol, host, IP, port, direction, kernel/lab, throughput. Filters for TCP, UDP, HTTP, HTTPS, QUIC, DNS, ICMP, WebSocket, RDP.
 
-Live-Tabelle mit Prozess, PID, Protokoll, Host, IP, Port, Richtung, Kernel/Labor und Durchsatz. Filter für TCP, UDP, HTTP, HTTPS, QUIC, DNS, ICMP, WebSocket, RDP.
+Unknown apps hit the prompt. System stuff and this runtime are pre-allowed.
 
-Unbekannte Apps landen im Dialog. Systemkram und die eigene Runtime sind vorab erlaubt, sonst klickst du dich tot.
+Unsigned binaries and inbound RDP get a warning. Don’t rubber-stamp `pcopt-svc.exe` from Temp.
 
-Unsignierte Binaries und eingehendes RDP kriegen eine Warnung. Macht Sinn — `pcopt-svc.exe` aus dem Temp-Ordner sollte man nicht aus Gewohnheit durchwinken.
+Rules live in `localStorage`. Per app, or app plus host. Toggle later.
 
-Regeln halten in `localStorage`. Pro App, oder App plus Host. Lässt sich nachträglich an- und ausschalten.
-
-Einstellungen: Firewall an/aus, Kernel-Capture, Labor, Sprache, Standard Nachfragen / Sperren / Zulassen. Eingehend extra, weil RDP auf 3389 was anderes ist als Chrome auf 443.
+Settings: firewall on/off, kernel capture, lab, language, default ask / block / allow. Inbound is separate — RDP on 3389 is not Chrome on 443.
 
 <p align="center">
-  <img src="docs/monitor.png" alt="Aegis Live-Überwachung mit Traffic und Verbindungsliste" width="920" />
+  <img src="docs/monitor.png" alt="Limen live monitor with traffic and connection list" width="920" />
 </p>
 
-## Was es nicht ist
+## What it isn’t
 
-Kein WFP-Treiber, kein `netsh advfirewall`. Blocken setzt die Richtlinie in der Konsole. Pakete auf dem Adapter droppen geht hier nicht — dafür bräuchte es nft/iptables im Userspace oder einen Filtertreiber auf Windows. Beides liegt in dieser Umgebung nicht. Die Überwachung ist echt. Das Droppen nicht. Das steht auch unter Einstellungen, nicht erst hier im Kleingedruckten.
+No WFP driver, no `netsh advfirewall`. Block writes policy in the console. Dropping packets on the adapter needs nft/iptables in userspace or a Windows filter driver. Neither is on this host. Capture is real. Drop is not. That note is in Settings too, not only here.
 
-## Start
+## Run
 
 Node 22.
 
@@ -69,37 +83,35 @@ npm i
 npm run dev
 ```
 
-Danach im Browser auf. Die Tabelle füllt sich aus der Kernel-Tabelle. Über **Neue Verbindung** erzwingst du den Dialog mit einer Labor-App, unabhängig davon ob das Labor sonst läuft.
-
-Build:
+Open it. The table fills from the kernel. **New connection** forces the prompt with a lab app, even if the lab is off.
 
 ```sh
 npm run build
 ```
 
-## Ordner
+## Layout
 
 ```
-src/lib/firewall/            Katalog, Engine, Store, Kernel-Reader
+src/lib/firewall/            catalog, engine, store, kernel reader
 src/lib/firewall/kernel-read.server.ts
-                             /proc/net Parser, inode → PID
-src/lib/i18n/                9 Sprachen
-src/lib/version.ts           APP_VERSION + Release-Notizen
-src/components/firewall/     Dialog, Monitor, Apps, Regeln, Verlauf
-CHANGELOG.md                 was sich pro Version geändert hat
-docs/VERSIONING.md           wie Nummern vergeben werden
+                             /proc/net parser, inode → PID
+src/lib/i18n/                9 languages
+src/lib/version.ts           APP_NAME, APP_VERSION, release notes
+src/components/firewall/     prompt, monitor, apps, rules, log
+CHANGELOG.md
+docs/VERSIONING.md
 ```
 
-`kernel-read.server.ts` liest die Tabellen. `engine.ts` pollt einmal pro Sekunde und schiebt neue Sockets in den Dialog. `store.ts` ist Zustand + Persistenz.
+`kernel-read.server.ts` reads the tables. `engine.ts` polls once a second and pushes new sockets into the prompt. `store.ts` is state + persist.
 
-## Hinweise
+## Notes
 
-Default-Sprache ist Deutsch. Regeln überleben einen Reload, der Verlauf nicht — der ist Session-Kram.
+Rules survive a reload. The log does not — that’s session data.
 
-Wenn der Dialog nervt: Einstellungen → Standardrichtlinie auf Zulassen. Dann greifen nur noch explizite Block-Regeln. Umgekehrt Sperren, wenn du Default-Deny willst.
+Prompt too loud: Settings → default policy Allow. Then only explicit block rules fire. Flip to Block for default-deny.
 
-Nächstes größeres Upgrade wäre 1.2, nicht ein stilles 1.1.1. So bleibt nachvollziehbar, wann die Capture-Logik sich geändert hat.
+Next visible feature bump is 1.2, not a silent 1.1.2.
 
-## Lizenz
+## License
 
-MIT. Mach damit, was du willst.
+MIT. Do what you want with it.

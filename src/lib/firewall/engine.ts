@@ -68,6 +68,7 @@ export function isTrustedExe(exe: string): boolean {
     s.includes("/usr/bin/node") ||
     s.includes("vite") ||
     s === "kernel" ||
+    s.endsWith("/limen") ||
     s.endsWith("/aegis")
   );
 }

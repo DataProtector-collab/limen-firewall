@@ -1,38 +1,42 @@
-# Versionen
+# Versions
 
-Aegis zählt nach SemVer. Jedes Upgrade, das man sieht oder merkt, bekommt eine neue Nummer. Kein stilles Drüberbügeln.
+Limen uses SemVer. Every upgrade you can see or feel gets a new number. No silent overwrites.
 
-| Stelle | Zweck |
+| Where | What |
 | --- | --- |
-| `src/lib/version.ts` | `APP_VERSION` + `RELEASES` (Settings-UI) |
-| `CHANGELOG.md` | Was sich geändert hat, in Klartext |
-| git-Tag `vX.Y.Z` | Freeze der Quelle |
-| Sidebar | zeigt `v` + `APP_VERSION` |
+| `src/lib/version.ts` | `APP_NAME`, `APP_VERSION`, `RELEASES` (Settings UI) |
+| `CHANGELOG.md` | What changed, in plain language |
+| git tag `vX.Y.Z` | freeze of the source |
+| Sidebar | shows `v` + `APP_VERSION` |
 
-## Nummern
+## Numbers
 
-- **Major** — Regeldatei oder Speicherformat bricht, oder die Idee der Konsole ändert sich.
-- **Minor** — neue Funktion. 1.0 → 1.1 war Kernel-Capture und Sprachen.
-- **Patch** — Bugs, Übersetzungen, Kleinkram ohne neues Verhalten.
+- **Major** — rule file or storage format breaks, or the idea of the console changes.
+- **Minor** — new behaviour. 1.0 → 1.1 was kernel capture and languages.
+- **Patch** — bugs, copy, rename, translations with no new behaviour. 1.1 → 1.1.1 was the rename to Limen.
 
-## Checkliste für ein Release
+## Release checklist
 
-1. `APP_VERSION` hochsetzen.
-2. Block in `RELEASES` oben einfügen (Settings liest das 1:1).
-3. Abschnitt in `CHANGELOG.md`.
-4. README anfassen, wenn sich Bedienung oder Grenzen ändern.
-5. Tag `vX.Y.Z` auf denselben Commit.
+1. Bump `APP_VERSION`.
+2. Put a block at the top of `RELEASES` (Settings reads it as-is).
+3. Section in `CHANGELOG.md`.
+4. Touch the README if usage or limits changed.
+5. Tag `vX.Y.Z` on the same commit.
 
-Alte Versionen bleiben im Changelog stehen. Nicht umschreiben.
+Leave old versions in the changelog. Don’t rewrite them.
 
-## Bisher
+## So far
 
-### 1.0.0 — 12.09.2026
+### 1.0.0 — 2026-09-12
 
-Erste Konsole. Dialog, Regeln, Verlauf, Deutsch. Traffic aus einem Windows-Labor, weil auf dem Host kein Filtertreiber liegt.
+First console. Prompt, rules, log, German. Traffic from a Windows lab because this host has no filter driver.
 
-### 1.1.0 — 12.09.2026
+### 1.1.0 — 2026-09-12
 
-Liest `/proc/net` und mappt Sockets auf Prozesse. Acht Sprachen dazu (en, zh, hi, es, fr, ar, bn, pt). Labor optional, Default aus.
+Reads `/proc/net` and maps sockets to processes. Eight more languages (en, zh, hi, es, fr, ar, bn, pt). Lab optional, default off.
 
-Nächstes Minor wäre z.B. echtes Packet-Drop (nft/WFP) oder Windows-Treiber. Das wäre 1.2, nicht ein stiller Patch.
+### 1.1.1 — 2026-09-12
+
+Renamed Aegis → Limen. Docs English-first.
+
+Next minor would be real packet drop (nft/WFP) or a Windows driver. That’s 1.2, not a quiet patch.

@@ -5,7 +5,7 @@ import { useFirewall } from "@/lib/firewall/store";
 import type { DefaultPolicy } from "@/lib/firewall/types";
 import { LOCALES, LOCALE_META, type Locale } from "@/lib/i18n";
 import { useT } from "@/lib/i18n/use-t";
-import { APP_VERSION, RELEASES } from "@/lib/version";
+import { APP_NAME, APP_VERSION, RELEASES } from "@/lib/version";
 import { cn } from "@/lib/utils";
 
 export function SettingsView() {
@@ -91,7 +91,9 @@ export function SettingsView() {
 
       <section className="rounded-lg border border-border bg-surface p-4">
         <h3 className="text-sm font-medium text-fg">{t("ver.title")}</h3>
-        <p className="mt-1 font-mono text-xs text-subtle">Aegis v{APP_VERSION}</p>
+        <p className="mt-1 font-mono text-xs text-subtle">
+          {APP_NAME} v{APP_VERSION}
+        </p>
         <ol className="mt-3 space-y-4">
           {RELEASES.map((rel) => (
             <li key={rel.version} className="border-s border-border ps-3">

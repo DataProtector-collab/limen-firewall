@@ -2,8 +2,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
-
-const APP_NAME = "Aegis";
+import { APP_NAME } from "@/lib/version";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,7 +14,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Aegis 1.1 — Kernel-Firewall: Verbindungen überwachen, Apps zulassen oder blockieren. Neun Sprachen.",
+          "Limen — ask-first firewall. Allow or block when an app goes online. Nine languages.",
       },
     ],
     links: [

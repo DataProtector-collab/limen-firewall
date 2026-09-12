@@ -1,4 +1,5 @@
-export const APP_VERSION = "1.1.0";
+export const APP_NAME = "Limen";
+export const APP_VERSION = "1.1.1";
 
 export interface ReleaseNote {
   version: string;
@@ -9,26 +10,35 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "1.1.1",
+    date: "2026-09-12",
+    title: "Rename: Limen",
+    items: [
+      "Product renamed from Aegis to Limen (Latin: threshold). Same console, different name.",
+      "Docs and GitHub description are English-first. In-app UI still has nine languages.",
+    ],
+  },
+  {
     version: "1.1.0",
     date: "2026-09-12",
-    title: "Kernel-Capture und Sprachen",
+    title: "Kernel capture + languages",
     items: [
-      "Liest die Kernel-Sockettabelle (/proc/net/tcp, tcp6, udp, udp6) und mappt Inodes auf PID und Binary.",
-      "NIC-Zähler kommen aus /proc/net/dev, nicht mehr aus Schätzwerten.",
-      "Neue Sockets ohne Regel landen im Zulassen/Blockieren-Dialog. Loopback und Listen werden nur angezeigt.",
-      "Acht weitere UI-Sprachen: Englisch, Chinesisch, Hindi, Spanisch, Französisch, Arabisch, Bengali, Portugiesisch.",
-      "Arabisch spiegelt das Layout (RTL). Sprache bleibt in localStorage.",
-      "Versionshistorie unter Einstellungen. Windows-Labor ist optional und standardmäßig aus.",
+      "Reads the kernel socket table (/proc/net/tcp, tcp6, udp, udp6) and maps inodes to PID and binary.",
+      "NIC counters come from /proc/net/dev, not guesses.",
+      "New sockets without a rule hit the allow/block prompt. Loopback and listen are display-only.",
+      "Eight more UI languages: English, Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese.",
+      "Arabic flips the layout (RTL). Language sticks in localStorage.",
+      "Version history in Settings. Windows lab is optional and off by default.",
     ],
   },
   {
     version: "1.0.0",
     date: "2026-09-12",
-    title: "Erste Konsole",
+    title: "First console",
     items: [
-      "Zulassen/Blockieren-Dialog, wenn eine App ins Netz will.",
-      "Regeln pro App oder App+Host, Live-Tabelle, Verlauf, deutsche Oberfläche.",
-      "Windows-Labortraffic für Chrome, Discord und den Rest.",
+      "Allow/block prompt when an app tries to reach the network.",
+      "Rules per app or app+host, live table, log, German UI.",
+      "Windows lab traffic for Chrome, Discord and the rest.",
     ],
   },
 ];

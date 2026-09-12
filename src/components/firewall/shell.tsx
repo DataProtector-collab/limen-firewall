@@ -22,7 +22,7 @@ import { useFirewall } from "@/lib/firewall/store";
 import type { ViewId } from "@/lib/firewall/types";
 import { LOCALE_META } from "@/lib/i18n";
 import { useT } from "@/lib/i18n/use-t";
-import { APP_VERSION } from "@/lib/version";
+import { APP_NAME, APP_VERSION } from "@/lib/version";
 import { cn } from "@/lib/utils";
 
 const NAV: { id: ViewId; key: string; icon: typeof Activity }[] = [
@@ -70,7 +70,7 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
           <div className="flex items-center gap-2 px-4 py-5">
             <ShieldMark active={enabled} alert={pending.length > 0} />
             <div>
-              <p className="text-sm font-medium tracking-tight">Aegis</p>
+              <p className="text-sm font-medium tracking-tight">{APP_NAME}</p>
               <p className="text-xs text-subtle">
                 {t("app.subtitle")} · v{APP_VERSION}
               </p>

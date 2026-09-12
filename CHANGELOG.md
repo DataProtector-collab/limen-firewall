@@ -1,45 +1,58 @@
 # Changelog
 
-Alles Neue, Gebrochene und Behobene. Neueste Version oben.
-Schema: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Nummern nach SemVer.
+What landed, what broke, what got fixed. Newest on top.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), numbers follow SemVer.
 
-Die laufende Nummer steht in `src/lib/version.ts`. Dieselbe Liste siehst du unter Einstellungen.
+The running number lives in `src/lib/version.ts`. Same list under Settings.
+
+---
+
+## [1.1.1] — 2026-09-12
+
+Rename.
+
+### Changed
+
+- Product is now **Limen** (Latin: threshold). Aegis was too common.
+- GitHub description and README are English-first. In-app UI is still nine languages, German default.
+- Old `aegis-firewall-v1` localStorage is still read, then written as `limen-firewall-v1`.
 
 ---
 
 ## [1.1.0] — 2026-09-12
 
-Kernel-Capture. Acht Sprachen. Labor ist optional.
+Kernel capture. Eight more languages. Lab is optional.
 
-### Neu
+### Added
 
-- Die Konsole liest die echte Kernel-Sockettabelle: `/proc/net/tcp`, `tcp6`, `udp`, `udp6`.
-- Inodes werden über `/proc/<pid>/fd` auf PID, `comm` und Binary gemappt. Ohne das ist eine Firewall nur Deko.
-- Durchsatz kommt aus `/proc/net/dev` (NIC-Bytezähler), nicht aus Zufallszahlen.
-- Neue Sockets ohne Regel gehen durch denselben Zulassen/Blockieren-Dialog. Loopback und Listen-Ports werden nur angezeigt, nicht abgefragt. node / Vite / Preview-Proxy sind vertrauenswürdig, sonst würgt sich die Konsole selbst ab.
-- Sprachen: Deutsch bleibt Default. Dazu Englisch, Chinesisch, Hindi, Spanisch, Französisch, Arabisch, Bengali, Portugiesisch — die acht meistgesprochenen Sprachen weltweit. Arabisch dreht das Layout auf RTL.
-- Sprache und Regeln liegen in `localStorage`.
-- Versionshistorie unter Einstellungen.
+- Reads the real kernel socket table: `/proc/net/tcp`, `tcp6`, `udp`, `udp6`.
+- Inodes map through `/proc/<pid>/fd` to PID, `comm` and binary. Without that a firewall is décor.
+- Throughput from `/proc/net/dev` (NIC byte counters), not random numbers.
+- New sockets without a rule go through the same allow/block prompt. Loopback and listen are display-only. node / Vite / preview proxy are trusted so the console doesn’t kill itself.
+- Languages: German stays default. Plus English, Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese — the eight most spoken languages worldwide. Arabic flips the layout to RTL.
+- Language and rules in `localStorage`.
+- Version history under Settings.
 
-### Geändert
+### Changed
 
-- Windows-Labor (Chrome, Discord, …) ist abgeschaltet, solange du es nicht unter Einstellungen anmachst. Die Tabelle füllt sich aus dem Kernel.
-- Blocken schreibt die Richtlinie. Paket-Drop bräuchte iptables/nft im Userspace — das liegt hier nicht. Steht ehrlich im Settings-Hinweis.
+- Windows lab (Chrome, Discord, …) is off until you turn it on. The table fills from the kernel.
+- Block writes policy. Packet drop would need iptables/nft in userspace — not on this host. Settings says so.
 
-### Doku
+### Docs
 
-- `CHANGELOG.md`, `docs/VERSIONING.md`, README auf 1.1 gezogen.
+- `CHANGELOG.md`, `docs/VERSIONING.md`, README for 1.1.
 
 ---
 
 ## [1.0.0] — 2026-09-12
 
-Erste öffentliche Konsole.
+First public console.
 
-- Dialog, wenn eine App nach draußen will: Diesmal / App+Ziel / gesamte App.
-- Live-Tabelle, Apps, Regeln, Verlauf.
-- Nur Deutsch.
-- Traffic kam aus einem Windows-Labor (echte Prozessnamen und Ziele, aber keine Kernel-Tabelle).
+- Prompt when an app wants the network: this time / app+host / whole app.
+- Live table, apps, rules, log.
+- German UI only.
+- Traffic came from a Windows lab (real process names and destinations, no kernel table).
 
-[1.1.0]: https://github.com/DataProtector-collab/Aegis---Windows-Firewall/releases/tag/v1.1.0
-[1.0.0]: https://github.com/DataProtector-collab/Aegis---Windows-Firewall/releases/tag/v1.0.0
+[1.1.1]: https://github.com/DataProtector-collab/Limen---Windows-Firewall/releases/tag/v1.1.1
+[1.1.0]: https://github.com/DataProtector-collab/Limen---Windows-Firewall/releases/tag/v1.1.0
+[1.0.0]: https://github.com/DataProtector-collab/Limen---Windows-Firewall/releases/tag/v1.0.0

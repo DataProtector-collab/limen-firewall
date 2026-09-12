@@ -17,7 +17,8 @@ import type {
   ViewId,
 } from "./types";
 
-const STORAGE_KEY = "aegis-firewall-v1";
+const STORAGE_KEY = "limen-firewall-v1";
+const LEGACY_STORAGE_KEY = "aegis-firewall-v1";
 
 function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`;
@@ -394,7 +395,8 @@ export const useFirewall = create<FirewallState>((set, get) => ({
   hydrate: () => {
     if (typeof window === "undefined") return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw =
+        localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
         const data = JSON.parse(raw) as {
           rules?: Rule[];
