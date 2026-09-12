@@ -55,6 +55,15 @@ A clean directory containing only the public runtime preparation script and
 its validation dependencies successfully downloaded the published native DLL
 and host. Both sizes and SHA-256 hashes matched the pinned manifest.
 
+The first GitHub Windows run exposed a test-setup defect: its temporary path
+used a DOS 8.3 alias, while WFP identified the launched probe by its long path.
+The test's application-specific filter therefore targeted a different identity.
+The isolated harness now resolves its temporary directory and compiled probe
+with native long-path canonicalization. A separate VM run using a real 8.3
+temporary alias passed all 19 packet/event checks with complete cleanup. The
+application's unrestricted approval session and event-derived decision paths
+were unchanged. Both packages were rebuilt to include the corrected harness.
+
 Native packet testing covered **outbound IPv4 TCP and UDP**. IPv6 filters were
 installed and read back, and IPv6 GeoIP lookup was tested, but the VM had no
 routable IPv6 target for a packet test. These results do not establish universal
@@ -66,9 +75,9 @@ it is not a boot-time or fail-closed service. See
 Final release SHA-256:
 
 ```text
-84a2d1355049d03078471f46ad626e006393eaa65a3e02b7e3607e91a058c913  Limen-1.4.0-setup-x64.exe
-ee32b5a48f48cc4edc1cad7fcf92a086dba79e8b271f32170944d1f863ced01b  Limen-1.4.0-portable-x64.exe
-51b76fc6e7d16c282376fe2f3d7b77d0d21c9225bf77397f39a717fc84cc18a4  app.asar
+e6f4ed50d2e6641fcb0b0bfc251c2f547e8c9d0f3569e610b2ac03fa1e10be7a  Limen-1.4.0-setup-x64.exe
+765e934937123a1ef6f802dc68bd78ad00609064dd38c9205441a961cf96aab9  Limen-1.4.0-portable-x64.exe
+cd303780c0171d12b62c4f018e9bbe80d06fb49bbc838ba2641849c706d4d3bf  app.asar
 3237336f79c8e847a0692c769700e0b4c91678a7b1c8372ed35ebee97dd2daba  Limen.Approval.Core.dll
 0c7beb35eb8cad9b29a97dc2c8ad7e445331d26ce190c7489feefb2a3d298ef6  Limen.Approval.Host.exe
 ```

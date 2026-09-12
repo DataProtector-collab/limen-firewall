@@ -4,6 +4,7 @@
 // Only the randomly named temporary probe receives WFP filters and an exact owned Windows rule.
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const { realpathSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -31,6 +32,9 @@ async function run() {
   const save = async () => { await fs.mkdir(path.dirname(reportPath), { recursive: true }); await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`); };
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const firewall = createBackend();
+  // WFP preserves DOS aliases in an application ID, while connection events use
+  // the executable's long path. Resolve both the probe and cleanup root natively.
+  const temporaryRoot = realpathSync.native(os.tmpdir());
   let directory, program, approval, nativeHost, ruleId, interrupted = false;
   const helpers = new Set();
   const interrupt = () => { interrupted = true; approval?.close(); for (const helper of helpers) helper.kill(); };
@@ -78,12 +82,14 @@ async function run() {
     const dnsAddress = option('--dns-address') || dns.getServers().find((server) => net.isIP(server) === 4 && !server.startsWith('127.'));
     if (net.isIP(tcpAddress) !== 4 || !dnsAddress || net.isIP(dnsAddress) !== 4 || tcpAddress.startsWith('127.') || dnsAddress.startsWith('127.'))
       throw new Error('A non-loopback IPv4 TCP endpoint and DNS server are required; use --tcp-address and --dns-address if necessary.');
-    directory = await fs.mkdtemp(path.join(os.tmpdir(), 'Limen-approval-selftest-'));
+    directory = realpathSync.native(await fs.mkdtemp(path.join(temporaryRoot, 'Limen-approval-selftest-')));
     program = path.join(directory, `LimenApprovalProbe-${crypto.randomUUID()}.exe`);
     report.program = program;
     const compiler = path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
     await execute(compiler, ['/nologo', '/optimize+', '/target:exe', '/reference:System.Web.Extensions.dll', `/out:${program}`,
       path.join(__dirname, 'native-tests/approval-probe.cs')]);
+    program = realpathSync.native(program);
+    report.program = program;
     approval = createApprovalBackend({ hostPath: path.join(runtime, 'Limen.Approval.Host.exe'), verifyRuntime: () => verifyRuntime(runtime, manifest),
       spawnProcess: (...spawnArgs) => { nativeHost = spawn(...spawnArgs); report.cleanup.hostExited = false; return nativeHost; } });
     await packet('TCP', tcpAddress, 443, true, 'Baseline TCP');
@@ -142,7 +148,7 @@ async function run() {
     } else { approval?.close(); report.cleanup.hostExited = true; }
     if (!report.cleanup.hostExited) report.passed = false;
     if (directory) {
-      const resolved = path.resolve(directory), relative = path.relative(path.resolve(os.tmpdir()), resolved);
+      const resolved = path.resolve(directory), relative = path.relative(temporaryRoot, resolved);
       if (relative && !relative.startsWith('..') && !path.isAbsolute(relative) && path.basename(resolved).startsWith('Limen-approval-selftest-')) {
         try { await fs.rm(resolved, { recursive: true, force: true }); report.cleanup.directoryRemoved = true; }
         catch (error) { report.cleanup.directoryError = error.message; report.passed = false; }
