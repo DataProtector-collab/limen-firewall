@@ -34,6 +34,7 @@ export function protoLabel(p: Protocol): string {
 }
 
 export function directionLabel(d: Direction, locale: Locale = "de"): string {
+  if (d === "unknown") return t(locale, "dir.unknown");
   return t(locale, d === "in" ? "dir.in" : "dir.out");
 }
 
@@ -47,6 +48,7 @@ export function categoryLabel(c: AppCategory, locale: Locale = "de"): string {
 
 export function initials(name: string): string {
   const parts = name.replace(/\.exe$/i, "").split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 }

@@ -20,13 +20,21 @@ export const PROTOCOLS = [
 
 export type Protocol = (typeof PROTOCOLS)[number];
 
-export type Direction = "out" | "in";
+export type Direction = "out" | "in" | "unknown";
 
 export type ConnState =
   | "listen"
   | "syn"
   | "established"
   | "timewait"
+  | "bound"
+  | "closed"
+  | "closing"
+  | "closewait"
+  | "finwait1"
+  | "finwait2"
+  | "lastack"
+  | "unknown"
   | "blocked"
   | "pending";
 
@@ -53,7 +61,7 @@ export interface AppInfo {
   name: string;
   exe: string;
   publisher: string;
-  signed: boolean;
+  signed: boolean | null;
   pid: number;
   category: AppCategory;
   path: string;
@@ -78,6 +86,7 @@ export interface Rule {
   createdAt: number;
   enabled: boolean;
   hits: number;
+  direction?: "in" | "out" | "any";
 }
 
 export interface Connection {
@@ -86,6 +95,7 @@ export interface Connection {
   protocol: Protocol;
   direction: Direction;
   localPort: number;
+  localIp?: string;
   remoteHost: string;
   remoteIp: string;
   remotePort: number;
@@ -99,6 +109,7 @@ export interface Connection {
   source?: "kernel" | "lab";
   inode?: string;
   pid?: number;
+  trafficMeasured?: boolean;
 }
 
 export interface LogEntry {

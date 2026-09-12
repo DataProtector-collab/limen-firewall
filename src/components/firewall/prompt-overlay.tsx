@@ -1,202 +1,139 @@
-import { useState, type ReactNode } from "react";
-import { Ban, Globe, Lock, ShieldAlert, ShieldOff } from "lucide-react";
+import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { appById, protocolColor } from "@/lib/firewall/engine";
-import { directionLabel, initials, protoLabel } from "@/lib/firewall/format";
+import { ModalContent } from "@/components/firewall/native-controls";
+import { endpoint } from "@/components/firewall/endpoints";
+import { APPS } from "@/lib/firewall/catalog";
+import { directionLabel } from "@/lib/firewall/format";
 import { useFirewall } from "@/lib/firewall/store";
-import type { DecisionScope } from "@/lib/firewall/types";
+import type { DecisionScope, PendingRequest } from "@/lib/firewall/types";
 import { useT } from "@/lib/i18n/use-t";
-import { APP_NAME } from "@/lib/version";
-import { cn } from "@/lib/utils";
 
 export function PromptOverlay() {
   const t = useT();
-  const lang = useFirewall((s) => s.settings.language);
   const pending = useFirewall((s) => s.pending);
-  const decide = useFirewall((s) => s.decide);
-  const item = pending[0];
-  const [scope, setScope] = useState<DecisionScope>("app-host");
-
+  const labPending = pending.filter((p) => p.connection.source !== "kernel");
+  const item = labPending[0];
+  const [dismissed, setDismissed] = useState<string | null>(null);
   if (!item) return null;
-
-  const conn = item.connection;
-  const app = appById(conn.appId);
-  const inbound = conn.direction === "in";
-  const unsigned = app ? !app.signed : true;
-  const rest = pending.length - 1;
-  const kernel = conn.source === "kernel";
-
-  const scopes: { id: DecisionScope; label: string; hint: string }[] = [
-    { id: "once", label: t("prompt.once"), hint: t("prompt.onceHint") },
-    { id: "app-host", label: t("prompt.appHost"), hint: t("prompt.appHostHint") },
-    { id: "app", label: t("prompt.app"), hint: t("prompt.appHint") },
-  ];
-
+  if (dismissed === item.id)
+    return (
+      <div className="fixed bottom-20 end-3 z-40 max-w-full px-3 md:bottom-4">
+        <Button
+          className="h-auto min-h-11 whitespace-normal py-2"
+          onClick={() => setDismissed(null)}
+        >
+          {t("prompt.resume", { n: labPending.length })}
+        </Button>
+      </div>
+    );
   return (
-    <div
-      className="backdrop-enter fixed inset-0 z-50 flex items-end justify-center bg-bg/80 p-3 sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="prompt-title"
+    <LabDecisionDialog
+      key={item.id}
+      item={item}
+      rest={labPending.length - 1}
+      onDefer={() => setDismissed(item.id)}
+    />
+  );
+}
+function LabDecisionDialog({
+  item,
+  rest,
+  onDefer,
+}: {
+  item: PendingRequest;
+  rest: number;
+  onDefer: () => void;
+}) {
+  const t = useT();
+  const lang = useFirewall((s) => s.settings.language);
+  const decide = useFirewall((s) => s.decide);
+  const [scope, setScope] = useState<DecisionScope>("once");
+  const c = item.connection;
+  const app = APPS.find((a) => a.id === c.appId);
+  return (
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onDefer();
+      }}
     >
-      <div className="prompt-enter w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-warn">
-            <ShieldAlert className="size-4" />
-            {t("prompt.title")}
+      <ModalContent title={t("prompt.title")} description={t("prompt.hint")}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-medium">{app?.name || t("prompt.unknownApp")}</h2>
+            <Badge variant="accent">{t("status.lab")}</Badge>
+            {rest ? <Badge>{t("prompt.queue", { n: rest })}</Badge> : null}
           </div>
-          {rest > 0 ? (
-            <Badge variant="warn">{t("prompt.queue", { n: rest })}</Badge>
-          ) : (
-            <span className="font-mono text-xs text-subtle">{APP_NAME}</span>
-          )}
-        </div>
-
-        <div className="space-y-5 px-5 py-5">
-          <div className="flex items-start gap-3">
-            <div
-              className={cn(
-                "relative flex size-12 shrink-0 items-center justify-center rounded-md font-mono text-sm font-medium",
-                unsigned
-                  ? "bg-block/15 text-block"
-                  : inbound
-                    ? "bg-warn/15 text-warn"
-                    : "bg-elevated text-accent",
-              )}
-            >
-              {app ? initials(app.name) : "?"}
-              <span className="pulse-ring absolute inset-0 rounded-md border border-current opacity-40" />
+          <p className="text-xs text-muted">{t("prompt.signature")}</p>
+          <dl className="grid grid-cols-1 gap-3 rounded-md border border-border bg-elevated p-3 text-xs sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-muted">{t("field.local")}</dt>
+              <dd dir="ltr" className="break-all font-mono">
+                {endpoint(c.localIp, c.localPort)}
+              </dd>
             </div>
-            <div className="min-w-0 flex-1">
-              <h2 id="prompt-title" className="text-lg font-medium leading-snug text-fg">
-                {app?.name ?? t("prompt.unknownApp")}
-              </h2>
-              <p className="truncate font-mono text-xs text-muted">{app?.exe}</p>
-              <p className="mt-1 truncate text-xs text-subtle">{app?.path}</p>
+            <div className="min-w-0">
+              <dt className="text-muted">{t("field.target")}</dt>
+              <dd dir="ltr" className="break-all font-mono">
+                {c.remoteHost}
+                <br />
+                {endpoint(c.remoteIp, c.remotePort)}
+              </dd>
             </div>
-          </div>
-
-          <p className="text-sm leading-relaxed text-fg">
-            {inbound ? t("prompt.bodyIn") : t("prompt.bodyOut")}
-          </p>
-
-          {kernel ? (
-            <div className="text-xs text-info">
-              {t("prompt.kernel", { inode: conn.inode ?? "—" })}
+            <div>
+              <dt className="text-muted">{t("field.proto")}</dt>
+              <dd>{c.protocol}</dd>
             </div>
-          ) : null}
-
-          {unsigned ? (
-            <div className="flex items-start gap-2 rounded-md border border-block/30 bg-block/10 px-3 py-2 text-xs text-block">
-              <ShieldOff className="mt-0.5 size-4 shrink-0" />
-              {t("prompt.unsigned")}
+            <div>
+              <dt className="text-muted">{t("field.dir")}</dt>
+              <dd>{directionLabel(c.direction, lang)}</dd>
             </div>
-          ) : inbound ? (
-            <div className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-              <Ban className="mt-0.5 size-4 shrink-0" />
-              {t("prompt.inbound")}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <Lock className="size-3.5" />
-              {t("prompt.signed", { publisher: app?.publisher ?? "" })}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-elevated p-3 text-xs">
-            <Field label={t("field.target")}>
-              <span className="flex items-center gap-1.5 text-fg">
-                <Globe className="size-3.5 text-muted" />
-                <span className="truncate">{conn.remoteHost}</span>
-              </span>
-            </Field>
-            <Field label={t("field.ip")}>
-              <span className="font-mono text-fg">{conn.remoteIp}</span>
-            </Field>
-            <Field label={t("field.proto")}>
-              <span className={cn("font-mono", protocolColor(conn.protocol))}>
-                {protoLabel(conn.protocol)}
-              </span>
-            </Field>
-            <Field label={t("field.port")}>
-              <span className="font-mono text-fg">{conn.remotePort}</span>
-            </Field>
-            <Field label={t("field.dir")}>
-              <span className="text-fg">{directionLabel(conn.direction, lang)}</span>
-            </Field>
-            <Field label={t("field.country")}>
-              <span className="text-fg">{conn.country}</span>
-            </Field>
-          </div>
-
+          </dl>
           {item.stacked > 1 ? (
             <p className="text-xs text-muted">{t("prompt.stacked", { n: item.stacked })}</p>
           ) : null}
-
-          <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-subtle">
-              {t("prompt.scope")}
-            </p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {scopes.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setScope(opt.id)}
-                  className={cn(
-                    "rounded-sm border px-2 py-2 text-left transition-colors duration-150",
-                    scope === opt.id
-                      ? "border-accent bg-accent/10 text-fg"
-                      : "border-border bg-bg text-muted hover:text-fg",
-                  )}
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">{t("prompt.scope")}</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(["once", "app-host", "app"] as const).map((value) => (
+                <label
+                  key={value}
+                  className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-border p-2 text-xs"
                 >
-                  <span className="block text-xs font-medium">{opt.label}</span>
-                  <span className="mt-0.5 hidden text-xs leading-tight text-subtle sm:block">
-                    {opt.hint}
-                  </span>
-                </button>
+                  <input
+                    type="radio"
+                    name="lab-decision-scope"
+                    checked={value === scope}
+                    onChange={() => setScope(value)}
+                  />
+                  {t(value === "app-host" ? "prompt.appHost" : "prompt." + value)}
+                </label>
               ))}
             </div>
+          </fieldset>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button variant="outline" onClick={onDefer}>
+              {t("prompt.defer")}
+            </Button>
+            <Button
+              variant="block"
+              className="h-auto min-h-11 whitespace-normal py-2"
+              onClick={() => decide(item.id, "block", scope)}
+            >
+              {t("btn.block")}
+            </Button>
+            <Button
+              variant="allow"
+              className="h-auto min-h-11 whitespace-normal py-2"
+              onClick={() => decide(item.id, "allow", scope)}
+            >
+              {t("btn.allow")}
+            </Button>
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-2 border-t border-border bg-elevated/60 p-4">
-          <Button
-            variant="block"
-            onClick={() => {
-              decide(item.id, "block", scope);
-              setScope("app-host");
-            }}
-          >
-            {t("btn.block")}
-          </Button>
-          <Button
-            variant="allow"
-            onClick={() => {
-              decide(item.id, "allow", scope);
-              setScope("app-host");
-            }}
-          >
-            {t("btn.allow")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="text-subtle">{label}</div>
-      <div className="mt-0.5 truncate">{children}</div>
-    </div>
+      </ModalContent>
+    </Dialog.Root>
   );
 }

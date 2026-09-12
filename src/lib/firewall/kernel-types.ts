@@ -12,6 +12,8 @@ export interface KernelSocket {
   comm: string;
   exe: string;
   uid: number;
+  direction?: "in" | "out" | "unknown";
+  signature?: { status: "valid" | "unsigned" | "unknown"; publisher?: string };
 }
 
 export interface KernelSnapshot {
@@ -21,5 +23,8 @@ export interface KernelSnapshot {
   txBytes: number;
   tcpInuse: number;
   udpInuse: number;
-  capture: "kernel";
+  capture: "windows" | "linux" | "unavailable";
+  available: boolean;
+  platform: string;
+  error?: string;
 }

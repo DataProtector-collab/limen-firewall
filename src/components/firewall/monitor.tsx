@@ -1,258 +1,261 @@
-import type { ReactNode } from "react";
+import { useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
-import { ArrowDown, ArrowUp, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { appById, protocolColor } from "@/lib/firewall/engine";
-import { directionLabel, fmtBytes, fmtRate, protoLabel } from "@/lib/firewall/format";
+import { NativeRuleEditor } from "@/components/firewall/native-controls";
+import { endpoint } from "@/components/firewall/endpoints";
+import { APPS } from "@/lib/firewall/catalog";
+import { directionLabel, fmtBytes, fmtRate } from "@/lib/firewall/format";
+import { isNativeDesktop } from "@/lib/firewall/native-types";
 import { useFirewall } from "@/lib/firewall/store";
-import { PROTOCOLS, type Protocol } from "@/lib/firewall/types";
+import { PROTOCOLS, type AppInfo, type Connection } from "@/lib/firewall/types";
 import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/utils";
-
-const FILTERS: Array<Protocol | "ALL"> = [
-  "ALL",
-  "TCP",
-  "UDP",
-  "HTTP",
-  "HTTPS",
-  "QUIC",
-  "DNS",
-  "ICMP",
-  "WSS",
-  "RDP",
-];
 
 export function MonitorView() {
   const t = useT();
   const lang = useFirewall((s) => s.settings.language);
-  const connections = useFirewall((s) => s.connections);
+  const conns = useFirewall((s) => s.connections);
+  const apps = useFirewall((s) => s.kernelApps);
   const samples = useFirewall((s) => s.samples);
   const query = useFirewall((s) => s.query);
   const setQuery = useFirewall((s) => s.setQuery);
-  const protoFilter = useFirewall((s) => s.protoFilter);
-  const setProtoFilter = useFirewall((s) => s.setProtoFilter);
-  const blockedCount = useFirewall((s) => s.blockedCount);
-  const allowedCount = useFirewall((s) => s.allowedCount);
-  const kernelCapture = useFirewall((s) => s.settings.kernelCapture);
-  const kernelRx = useFirewall((s) => s.kernelRx);
-  const kernelTx = useFirewall((s) => s.kernelTx);
-
-  const live = connections.filter(
-    (c) => c.state === "established" || c.state === "listen",
-  );
-  const rateIn = kernelCapture ? kernelRx : live.reduce((a, c) => a + c.rateIn, 0);
-  const rateOut = kernelCapture ? kernelTx : live.reduce((a, c) => a + c.rateOut, 0);
-
+  const proto = useFirewall((s) => s.protoFilter);
+  const setProto = useFirewall((s) => s.setProtoFilter);
+  const settings = useFirewall((s) => s.settings);
+  const rx = useFirewall((s) => s.kernelRx);
+  const tx = useFirewall((s) => s.kernelTx);
+  const live = useFirewall((s) => s.kernelLive);
+  const allowed = useFirewall((s) => s.allowedCount);
+  const blocked = useFirewall((s) => s.blockedCount);
+  const clearError = useFirewall((s) => s.clearNativeError);
+  const [limit, setLimit] = useState(60);
+  const [editor, setEditor] = useState<{ app: AppInfo; remoteIp?: string } | null>(null);
+  const native = isNativeDesktop();
+  const appMap = new Map([...APPS, ...apps].map((app) => [app.id, app]));
+  const visible = conns.filter((c) => (c.source === "kernel" ? native : settings.labTraffic));
   const q = query.trim().toLowerCase();
-  const shown = connections.filter((c) => {
-    if (c.state === "blocked") return false;
-    if (protoFilter !== "ALL" && c.protocol !== protoFilter) return false;
-    if (!q) return true;
-    const app = appById(c.appId);
+  const shown = visible.filter((c) => {
+    if (proto !== "ALL" && c.protocol !== proto) return false;
+    const app = appMap.get(c.appId);
     return (
-      app?.name.toLowerCase().includes(q) ||
-      app?.exe.toLowerCase().includes(q) ||
-      app?.path.toLowerCase().includes(q) ||
-      c.remoteHost.toLowerCase().includes(q) ||
-      c.remoteIp.includes(q) ||
-      c.protocol.toLowerCase().includes(q)
+      !q ||
+      [
+        app?.name,
+        app?.exe,
+        app?.path,
+        c.remoteHost,
+        c.remoteIp,
+        c.localIp,
+        String(c.localPort),
+        String(c.remotePort),
+        c.protocol,
+      ].some((value) => value?.toLowerCase().includes(q))
     );
   });
-
-  const protoMix = PROTOCOLS.map((p) => ({
-    p,
-    n: live.filter((c) => c.protocol === p).length,
-  })).filter((x) => x.n > 0);
-
+  const measured = native && settings.kernelCapture && live;
+  const openEditor = (app: AppInfo, conn: Connection) => {
+    clearError();
+    const remoteIp =
+      conn.remoteIp && conn.remoteIp !== "0.0.0.0" && conn.remoteIp !== "::"
+        ? conn.remoteIp
+        : undefined;
+    setEditor({ app, remoteIp });
+  };
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Stat
-          label={t("stat.active")}
-          value={String(live.length)}
-          hint={t("stat.captured", { n: connections.length })}
-        />
-        <Stat
-          label={t("stat.rx")}
-          value={fmtRate(rateIn)}
-          hint={kernelCapture ? t("stat.kernelHint") : fmtBytes(live.reduce((a, c) => a + c.bytesIn, 0))}
-          icon={<ArrowDown className="size-3.5 text-allow" />}
-        />
-        <Stat
-          label={t("stat.tx")}
-          value={fmtRate(rateOut)}
-          hint={kernelCapture ? t("stat.kernelHint") : fmtBytes(live.reduce((a, c) => a + c.bytesOut, 0))}
-          icon={<ArrowUp className="size-3.5 text-info" />}
-        />
-        <Stat
-          label={t("stat.decisions")}
-          value={`${allowedCount} / ${blockedCount}`}
-          hint={t("stat.allowBlock")}
-        />
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-border bg-surface">
-        <div className="flex items-center justify-between px-4 pt-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-            {t("stat.throughput")}
-          </p>
-          <p className="font-mono text-xs text-muted">
-            ↓ {fmtRate(rateIn)} · ↑ {fmtRate(rateOut)}
-          </p>
-        </div>
-        <div className="h-28 w-full px-1 pb-1">
-          {samples.length > 2 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={samples} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="inFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-allow)" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="var(--color-allow)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="outFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-info)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="var(--color-info)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <YAxis hide domain={[0, "auto"]} />
-                <Area
-                  type="monotone"
-                  dataKey="in"
-                  stroke="var(--color-allow)"
-                  fill="url(#inFill)"
-                  strokeWidth={1.5}
-                  isAnimationActive={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="out"
-                  stroke="var(--color-info)"
-                  fill="url(#outFill)"
-                  strokeWidth={1.5}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-subtle">
-              {t("stat.wait")}
+    <div className="space-y-4">
+      {native ? (
+        <>
+          {!settings.kernelCapture ? (
+            <p className="text-sm text-warn">{t("monitor.paused")}</p>
+          ) : null}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Stat
+              label={t("stat.active")}
+              value={String(visible.filter((c) => c.source === "kernel").length)}
+              hint={t(live ? "status.live" : "status.unavailable")}
+            />
+            <Stat
+              label={t("stat.rx")}
+              value={measured ? fmtRate(rx) : "—"}
+              hint={t(measured ? "stat.hostHint" : "stat.na")}
+            />
+            <Stat
+              label={t("stat.tx")}
+              value={measured ? fmtRate(tx) : "—"}
+              hint={t(measured ? "stat.hostHint" : "stat.na")}
+            />
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <h2 className="text-sm font-medium">{t("stat.throughput")}</h2>
+            <p className="mt-1 text-xs text-muted">{t("stat.hostHint")}</p>
+            <div className="mt-3 h-28 w-full min-w-0" role="img" aria-label={t("stat.throughput")}>
+              {measured && samples.length > 2 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={samples} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                    <YAxis hide domain={[0, "auto"]} />
+                    <Area
+                      type="linear"
+                      dataKey="in"
+                      stroke="var(--color-allow)"
+                      fill="var(--color-allow)"
+                      fillOpacity={0.12}
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="out"
+                      stroke="var(--color-info)"
+                      fill="var(--color-info)"
+                      fillOpacity={0.08}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="flex h-full items-center justify-center text-xs text-muted">
+                  {t("stat.wait")}
+                </p>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {protoMix.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {protoMix.map((x) => (
-            <Badge key={x.p} variant="default" className="font-mono">
-              <span className={protocolColor(x.p)}>{protoLabel(x.p)}</span>
-              <span className="ms-1.5 tabular-nums text-subtle">{x.n}</span>
-            </Badge>
-          ))}
+          </div>
+          <p className="text-xs text-muted">{t("monitor.windowsHint")}</p>
+        </>
+      ) : null}
+      {settings.labTraffic ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+          <Badge variant="accent">{t("status.lab")}</Badge>
+          <span>
+            {t("stat.lab")}: {visible.filter((c) => c.source !== "kernel").length}
+          </span>
+          <span className="text-muted">
+            {t("stat.decisions")}: {allowed} / {blocked}
+          </span>
         </div>
       ) : null}
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="space-y-2">
         <Input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setLimit(60);
+          }}
           placeholder={t("search.ph")}
-          className="sm:max-w-xs"
+          aria-label={t("search.ph")}
         />
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {FILTERS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setProtoFilter(p)}
-              className={cn(
-                "h-9 shrink-0 rounded-full border px-3 font-mono text-xs transition-colors",
-                protoFilter === p
-                  ? "border-accent bg-accent/15 text-fg"
-                  : "border-border text-muted hover:text-fg",
-              )}
-            >
-              {p === "ALL" ? t("filter.all") : protoLabel(p)}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-2">
+          <select
+            aria-label={t("field.proto")}
+            value={proto}
+            onChange={(e) => {
+              setProto(e.target.value as typeof proto);
+              setLimit(60);
+            }}
+            className="min-h-11 max-w-full rounded-sm border border-border bg-elevated px-3 text-sm text-fg"
+          >
+            <option value="ALL">{t("filter.all")}</option>
+            {PROTOCOLS.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+          <p role="status" className="flex items-center text-xs text-muted">
+            {t("monitor.results", { n: shown.length })}
+          </p>
         </div>
       </div>
-
-      <div className="overflow-hidden rounded-lg border border-border bg-surface">
-        <div className="hidden grid-cols-[1.3fr_0.6fr_1.4fr_0.5fr_0.6fr_0.7fr] gap-2 border-b border-border px-4 py-2 text-xs uppercase tracking-wider text-subtle md:grid">
-          <span>{t("col.app")}</span>
-          <span>{t("col.proto")}</span>
-          <span>{t("col.target")}</span>
-          <span>{t("col.port")}</span>
-          <span>{t("col.dir")}</span>
-          <span className="text-end">{t("col.traffic")}</span>
-        </div>
-        {shown.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted">
-            <ShieldOff className="size-6 text-subtle" />
-            {t("empty.conns")}
-          </div>
-        ) : (
-          <ul className="divide-y divide-border">
-            {shown.slice(0, 60).map((c) => {
-              const app = appById(c.appId);
-              return (
-                <li
-                  key={c.id}
-                  className="grid grid-cols-1 gap-1 px-4 py-3 md:grid-cols-[1.3fr_0.6fr_1.4fr_0.5fr_0.6fr_0.7fr] md:items-center md:gap-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-fg">{app?.name ?? c.appId}</p>
-                    <p className="truncate font-mono text-xs text-subtle">
-                      {app?.exe} · PID {c.pid ?? app?.pid}
-                      {c.source === "kernel" ? ` · ${t("status.kernel")}` : ""}
-                    </p>
+      {shown.length ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+          {shown.slice(0, limit).map((c) => {
+            const app = appMap.get(c.appId);
+            const real = c.source === "kernel";
+            return (
+              <li key={c.id} className="grid gap-3 p-4 lg:grid-cols-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="break-words text-sm font-medium">{app?.name || c.appId}</p>
+                    <Badge variant={real ? "info" : "accent"}>
+                      {t(real ? "status.native" : "status.lab")}
+                    </Badge>
                   </div>
-                  <div className={cn("font-mono text-xs", protocolColor(c.protocol))}>
-                    {protoLabel(c.protocol)}
+                  <p className="mt-1 break-all font-mono text-xs text-muted">
+                    {app?.exe || "—"} · PID {c.pid ?? app?.pid ?? "—"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {t("field.state")}: {c.state} · {c.protocol}
+                  </p>
+                </div>
+                <dl className="min-w-0 space-y-2 text-xs">
+                  <div>
+                    <dt className="text-muted">{t("field.local")}</dt>
+                    <dd dir="ltr" className="break-all font-mono">
+                      {endpoint(c.localIp, c.localPort)}
+                    </dd>
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-fg">{c.remoteHost}</p>
-                    <p className="truncate font-mono text-xs text-subtle">
-                      {c.remoteIp} · {c.country}
-                    </p>
+                  <div>
+                    <dt className="text-muted">{t("field.target")}</dt>
+                    <dd dir="ltr" className="break-all font-mono">
+                      {c.remotePort ||
+                      (c.remoteIp && c.remoteIp !== "0.0.0.0" && c.remoteIp !== "::")
+                        ? endpoint(c.remoteIp, c.remotePort)
+                        : t("monitor.noPeer")}
+                    </dd>
                   </div>
-                  <div className="font-mono text-xs tabular-nums text-muted">{c.remotePort}</div>
-                  <div className="text-xs text-muted">{directionLabel(c.direction, lang)}</div>
-                  <div className="text-end font-mono text-xs tabular-nums text-muted">
-                    {c.state === "listen" ? "LISTEN" : fmtRate(c.rateIn + c.rateOut)}
-                    <span className="block text-subtle">{fmtBytes(c.bytesIn + c.bytesOut)}</span>
+                  <div className="text-muted">
+                    {t("field.dir")}: {directionLabel(c.direction, lang)}
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                </dl>
+                <div className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
+                  <p className={cn("text-xs text-muted", real ? "" : "font-mono")}>
+                    {real
+                      ? t("native.traffic")
+                      : t("monitor.labTraffic", { bytes: fmtBytes(c.bytesIn + c.bytesOut) })}
+                  </p>
+                  {real && app ? (
+                    <Button
+                      variant="outline"
+                      className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-xs"
+                      onClick={() => openEditor(app, c)}
+                    >
+                      {t("native.rule")}
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted">
+          {t("empty.conns")}
+        </p>
+      )}
+      {shown.length > limit ? (
+        <Button
+          variant="outline"
+          onClick={() => setLimit((n) => n + 60)}
+          className="h-auto min-h-11 whitespace-normal py-2"
+        >
+          {t("monitor.more", { n: shown.length - limit })}
+        </Button>
+      ) : null}
+      {editor ? (
+        <NativeRuleEditor
+          app={editor.app}
+          remoteIp={editor.remoteIp}
+          onClose={() => setEditor(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function Stat({
-  label,
-  value,
-  hint,
-  icon,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  icon?: ReactNode;
-}) {
+function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
-      <div className="flex items-center justify-between text-xs text-subtle">
-        {label}
-        {icon}
-      </div>
-      <p className="mt-1 font-mono text-xl tabular-nums tracking-tight text-fg">{value}</p>
-      <p className="mt-0.5 text-xs text-muted">{hint}</p>
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 font-mono text-xl">{value}</p>
+      <p className="mt-1 text-xs text-muted">{hint}</p>
     </div>
   );
 }

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>UI TEST FIXTURE — Limen simulated native bridge</title>
+    <style>
+      :root {
+        --fixture-banner-height: 140px;
+      }
+      body {
+        margin: 0;
+        padding-top: var(--fixture-banner-height);
+      }
+      #native-ui-fixture-banner {
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: 2147483647;
+        pointer-events: auto;
+        background: #ffdf55;
+        color: #161616;
+        border-bottom: 4px solid #b22424;
+        padding: 10px 14px;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      #native-ui-fixture-banner strong {
+        display: block;
+        font-size: 16px;
+      }
+      #native-ui-fixture-banner p {
+        margin: 4px 0;
+      }
+      #native-ui-fixture-banner button {
+        cursor: pointer;
+        color: #161616;
+        background: #fff;
+        border: 2px solid #161616;
+        border-radius: 4px;
+        min-height: 44px;
+        margin: 4px 8px 0 0;
+        padding: 6px 12px;
+      }
+      /* Keep the permanent test label visible while testing real app dialogs. */
+      #app header {
+        top: var(--fixture-banner-height);
+      }
+      body > div.fixed.inset-0.z-50 {
+        top: var(--fixture-banner-height);
+      }
+    </style>
+  </head>
+  <body>
+    <aside id="native-ui-fixture-banner" aria-label="UI test fixture controls">
+      <strong>UI TEST FIXTURE — simulated bridge, no Windows changes</strong>
+      <p>
+        Processes, profiles, traffic and saved rules below are test data. Rules exist only in this
+        page's memory.
+      </p>
+      <button id="fixture-reject" type="button">Reject next save</button>
+      <button id="fixture-accept" type="button">Accept saves</button>
+      <span id="fixture-mode" role="status">Next save will reject with a fixture error.</span>
+    </aside>
+    <div id="app"></div>
+    <script type="module" src="./native-ui.ts"></script>
+  </body>
+</html>

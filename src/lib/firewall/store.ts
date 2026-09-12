@@ -1,449 +1,278 @@
 import { create } from "zustand";
-import type { Locale } from "@/lib/i18n";
-import { isLocale } from "@/lib/i18n";
-import { APP_BY_ID, APPS, SYSTEM_APP_IDS } from "./catalog";
-import type {
-  Action,
-  AppInfo,
-  Connection,
-  DecisionScope,
-  DefaultPolicy,
-  LogEntry,
-  PendingRequest,
-  Protocol,
-  Rule,
-  Settings,
-  TrafficSample,
-  ViewId,
-} from "./types";
+import { APP_BY_ID, SYSTEM_APP_IDS } from "./catalog";
+import { defaultSettings, isLabRule, matchRule, validateSettings } from "./policy";
+import { getNativeBridge, type NativeRule, type NativeRuleInput, type NativeStatus } from "./native-types";
+import type { Action, AppInfo, Connection, DecisionScope, LogEntry, PendingRequest, Protocol, Rule, Settings, TrafficSample, ViewId } from "./types";
 
-const STORAGE_KEY = "limen-firewall-v1";
-const LEGACY_STORAGE_KEY = "aegis-firewall-v1";
-
-function uid(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`;
-}
-
-function defaultSystemRules(): Rule[] {
-  const now = Date.now();
-  return APPS.filter((a) => SYSTEM_APP_IDS.has(a.id)).map((a) => ({
-    id: `sys-${a.id}`,
-    appId: a.id,
-    action: "allow" as const,
-    scope: "app" as const,
-    protocol: "ANY" as const,
-    port: "ANY" as const,
-    createdAt: now,
-    enabled: true,
-    hits: 0,
-  }));
-}
-
-const defaultSettings: Settings = {
-  enabled: true,
-  defaultPolicy: "ask",
-  inboundPolicy: "ask",
-  autoAllowSystem: true,
-  promptSound: false,
-  language: "de",
-  kernelCapture: true,
-  labTraffic: false,
-};
+const STORAGE_KEY = "limen-lab-v2";
+const uid = (prefix: string) => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
+let nativeRevision = 0;
 
 export interface FirewallState {
-  hydrated: boolean;
-  view: ViewId;
-  query: string;
-  protoFilter: Protocol | "ALL";
-  settings: Settings;
-  rules: Rule[];
-  connections: Connection[];
-  pending: PendingRequest[];
-  log: LogEntry[];
-  samples: TrafficSample[];
-  kernelApps: AppInfo[];
-  kernelRx: number;
-  kernelTx: number;
-  kernelTcp: number;
-  kernelUdp: number;
-  kernelLive: boolean;
-  blockedCount: number;
-  allowedCount: number;
-  setView: (view: ViewId) => void;
-  setQuery: (q: string) => void;
-  setProtoFilter: (p: Protocol | "ALL") => void;
-  patchSettings: (p: Partial<Settings>) => void;
+  hydrated: boolean; view: ViewId; query: string; protoFilter: Protocol | "ALL";
+  settings: Settings; rules: Rule[]; connections: Connection[];
+  pending: PendingRequest[]; log: LogEntry[]; samples: TrafficSample[];
+  kernelApps: AppInfo[]; kernelRx: number; kernelTx: number;
+  kernelTcp: number; kernelUdp: number; kernelLive: boolean;
+  captureError: string | null; blockedCount: number; allowedCount: number;
+  nativeStatus: NativeStatus | null; nativeRules: NativeRule[];
+  nativeBusy: boolean; nativeError: string | null;
+  refreshNative: () => Promise<void>;
+  applyNativeRule: (input: NativeRuleInput) => Promise<boolean>;
+  removeNativeRule: (id: string) => Promise<boolean>;
+  setNativeRuleEnabled: (id: string, enabled: boolean) => Promise<boolean>;
+  clearNativeError: () => void;
+  setView: (view: ViewId) => void; setQuery: (query: string) => void;
+  setProtoFilter: (protocol: Protocol | "ALL") => void;
+  patchSettings: (patch: Partial<Settings>) => void;
   matchAction: (conn: Connection) => Action | null;
   enqueuePending: (conn: Connection) => void;
   upsertConnection: (conn: Connection) => void;
   tickConnections: (now: number) => void;
-  decide: (pendingId: string, action: Action, scope: DecisionScope) => void;
+  decide: (id: string, action: Action, scope: DecisionScope) => void;
   addRule: (rule: Omit<Rule, "id" | "createdAt" | "hits">) => void;
-  removeRule: (id: string) => void;
-  toggleRule: (id: string) => void;
+  removeRule: (id: string) => void; toggleRule: (id: string) => void;
   setAppAction: (appId: string, action: Action) => void;
   pushLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   pushSample: (sample: TrafficSample) => void;
-  setKernelStats: (s: {
-    rx: number;
-    tx: number;
-    tcp: number;
-    udp: number;
-    apps: AppInfo[];
-    live?: boolean;
-  }) => void;
+  setKernelStats: (stats: { rx: number; tx: number; tcp: number; udp: number; apps: AppInfo[]; live?: boolean }) => void;
   mergeKernelConnections: (conns: Connection[]) => void;
-  hydrate: () => void;
-  persist: () => void;
-  reset: () => void;
+  hydrate: () => void; persist: () => void; reset: () => void;
 }
 
-function matchRule(rules: Rule[], conn: Connection): Rule | null {
-  const ranked = rules
-    .filter((r) => r.enabled && r.appId === conn.appId)
-    .sort((a, b) => {
-      const score = (r: Rule) =>
-        (r.scope === "app-host" ? 4 : 0) +
-        (r.host ? 2 : 0) +
-        (r.protocol && r.protocol !== "ANY" ? 1 : 0);
-      return score(b) - score(a);
-    });
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const appendError = (existing: string | null, message: string) => !existing ? message : existing.includes(message) ? existing : `${existing} · ${message}`;
+function canonicalAddress(address?: string): string | undefined {
+  if (!address?.includes(":")) return address;
+  try { return new URL(`http://[${address}]/`).hostname; } catch { return address.toLowerCase(); }
+}
 
-  for (const r of ranked) {
-    if (r.scope === "app-host" && r.host && r.host !== conn.remoteHost) continue;
-    if (r.protocol && r.protocol !== "ANY" && r.protocol !== conn.protocol) continue;
-    if (r.port && r.port !== "ANY" && r.port !== conn.remotePort) continue;
-    return r;
+async function readRulesAfterFailure(read: () => Promise<NativeRule[]>): Promise<NativeRule[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      read(),
+      new Promise<NativeRule[]>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Rule refresh timed out; inspect Windows Firewall before retrying.")), 10000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+export const useFirewall = create<FirewallState>((set, get) => {
+  async function mutateNative(operation: () => Promise<(rules: NativeRule[]) => boolean>): Promise<boolean> {
+    if (get().nativeBusy) return false;
+    const bridge = getNativeBridge();
+    if (!bridge) {
+      set({ nativeError: "Windows desktop application required." });
+      return false;
+    }
+    ++nativeRevision;
+    set({ nativeBusy: true, nativeError: null });
+    let mutationAttempted = false;
+    try {
+      const status = await bridge.getStatus();
+      set({ nativeStatus: status });
+      if (!status.available || !status.elevated || status.backend !== "windows-firewall") {
+        throw new Error(status.reason || "Administrator privileges and Windows Firewall are required.");
+      }
+      mutationAttempted = true;
+      const verify = await operation();
+      const rules = await bridge.listRules();
+      set({ nativeRules: rules });
+      if (!verify(rules)) throw new Error("Windows did not confirm the requested rule change. Refresh the rule list before retrying.");
+      return true;
+    } catch (error) {
+      let message = errorMessage(error);
+      if (mutationAttempted) {
+        // A native timeout or failed verification can follow an OS write.
+        // Show the current authoritative state without disguising that failure.
+        try { set({ nativeRules: await readRulesAfterFailure(() => bridge.listRules()) }); }
+        catch (refreshError) { message += ` · ${errorMessage(refreshError)}`; }
+      }
+      set({ nativeError: message });
+      return false;
+    } finally {
+      set({ nativeBusy: false });
+    }
   }
-  return null;
-}
 
-export const useFirewall = create<FirewallState>((set, get) => ({
-  hydrated: false,
-  view: "monitor",
-  query: "",
-  protoFilter: "ALL",
-  settings: defaultSettings,
-  rules: defaultSystemRules(),
-  connections: [],
-  pending: [],
-  log: [],
-  samples: [],
-  kernelApps: [],
-  kernelRx: 0,
-  kernelTx: 0,
-  kernelTcp: 0,
-  kernelUdp: 0,
-  kernelLive: false,
-  blockedCount: 0,
-  allowedCount: 0,
+  function reevaluateLabConnections() {
+    set((state) => ({ connections: state.connections.map((conn) => {
+      if (conn.source !== "lab") return conn;
+      const rule = matchRule(state.rules, conn);
+      if (!rule) return conn;
+      return { ...conn, state: rule.action === "block" ? "blocked" : "established" };
+    }) }));
+  }
 
-  setView: (view) => set({ view }),
-  setQuery: (query) => set({ query }),
-  setProtoFilter: (protoFilter) => set({ protoFilter }),
+  return {
+    hydrated: false, view: "monitor", query: "", protoFilter: "ALL",
+    settings: { ...defaultSettings }, rules: [], connections: [], pending: [], log: [], samples: [],
+    kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false,
+    captureError: null, blockedCount: 0, allowedCount: 0,
+    nativeStatus: null, nativeRules: [], nativeBusy: false, nativeError: null,
 
-  patchSettings: (p) => {
-    set((s) => ({ settings: { ...s.settings, ...p } }));
-    get().persist();
-  },
-
-  matchAction: (conn) => {
-    const { settings, rules } = get();
-    if (!settings.enabled) return "allow";
-    const hit = matchRule(rules, conn);
-    if (hit) {
-      set({
-        rules: rules.map((r) =>
-          r.id === hit.id ? { ...r, hits: r.hits + 1 } : r,
-        ),
-      });
-      return hit.action;
-    }
-    if (settings.autoAllowSystem && SYSTEM_APP_IDS.has(conn.appId)) return "allow";
-    const policy =
-      conn.direction === "in" ? settings.inboundPolicy : settings.defaultPolicy;
-    if (policy === "ask") return null;
-    return policy;
-  },
-
-  enqueuePending: (conn) => {
-    set((s) => {
-      const existing = s.pending.find(
-        (p) =>
-          p.connection.appId === conn.appId &&
-          p.connection.remoteHost === conn.remoteHost &&
-          p.connection.protocol === conn.protocol,
-      );
-      if (existing) {
-        return {
-          pending: s.pending.map((p) =>
-            p.id === existing.id ? { ...p, stacked: p.stacked + 1 } : p,
-          ),
-        };
-      }
-      return {
-        pending: [
-          ...s.pending,
-          { id: uid("pend"), connection: { ...conn, state: "pending" }, stacked: 1 },
-        ],
-      };
-    });
-  },
-
-  upsertConnection: (conn) => {
-    set((s) => {
-      const idx = s.connections.findIndex((c) => c.id === conn.id);
-      if (idx === -1) {
-        const next = [conn, ...s.connections].slice(0, 90);
-        return { connections: next };
-      }
-      const copy = s.connections.slice();
-      copy[idx] = conn;
-      return { connections: copy };
-    });
-  },
-
-  tickConnections: (now) => {
-    set((s) => {
-      const next: Connection[] = [];
-      for (const c of s.connections) {
-        if (c.source === "kernel") {
-          next.push(c);
-          continue;
-        }
-        if (c.state === "blocked") continue;
-        const age = now - c.startedAt;
-        if (c.state === "syn" && age > 900) {
-          next.push({ ...c, state: "established" });
-          continue;
-        }
-        if (c.state === "established") {
-          const closeChance = age > 25000 ? 0.08 : 0.015;
-          if (Math.random() < closeChance) continue;
-          const burst = c.protocol === "HTTPS" || c.protocol === "QUIC" ? 1 : 0.35;
-          const din = Math.round((200 + Math.random() * 14000) * burst);
-          const dout = Math.round((40 + Math.random() * 2800) * burst);
-          next.push({
-            ...c,
-            bytesIn: c.bytesIn + din,
-            bytesOut: c.bytesOut + dout,
-            rateIn: din * 2,
-            rateOut: dout * 2,
+    refreshNative: async () => {
+      const bridge = getNativeBridge();
+      if (!bridge || get().nativeBusy) return;
+      const revision = ++nativeRevision;
+      try {
+        const [status, rules] = await Promise.allSettled([bridge.getStatus(), bridge.listRules()]);
+        if (revision === nativeRevision && !get().nativeBusy) {
+          const errors = [status, rules].filter((result) => result.status === "rejected").map((result) => errorMessage((result as PromiseRejectedResult).reason));
+          set({
+            ...(status.status === "fulfilled" ? { nativeStatus: status.value } : {}),
+            ...(rules.status === "fulfilled" ? { nativeRules: rules.value } : {}),
+            nativeError: errors.reduce<string | null>((existing, message) => appendError(existing, message), get().nativeError),
           });
-          continue;
         }
-        next.push(c);
+      } catch (error) {
+        if (revision === nativeRevision) set({ nativeError: appendError(get().nativeError, errorMessage(error)) });
       }
-      return { connections: next };
-    });
-  },
+    },
+    applyNativeRule: (input) => mutateNative(async () => {
+      const rule = await getNativeBridge()!.applyRule(input);
+      return (rules) => rules.some((r) => r.id === rule.id && r.enabled &&
+        r.program.toLowerCase() === input.program.toLowerCase() && r.action === input.action &&
+        r.direction === input.direction && r.protocol === input.protocol &&
+        canonicalAddress(r.remoteAddress) === canonicalAddress(input.remoteAddress) && r.remotePort === input.remotePort && r.localPort === input.localPort);
+    }),
+    removeNativeRule: (id) => mutateNative(async () => {
+      await getNativeBridge()!.removeRule(id);
+      return (rules) => !rules.some((rule) => rule.id === id);
+    }),
+    setNativeRuleEnabled: (id, enabled) => mutateNative(async () => {
+      await getNativeBridge()!.setRuleEnabled(id, enabled);
+      return (rules) => rules.some((rule) => rule.id === id && rule.enabled === enabled);
+    }),
+    clearNativeError: () => set({ nativeError: null }),
+    setView: (view) => set({ view }), setQuery: (query) => set({ query }),
+    setProtoFilter: (protoFilter) => set({ protoFilter }),
 
-  decide: (pendingId, action, scope) => {
-    const { pending, rules, kernelApps } = get();
-    const item = pending.find((p) => p.id === pendingId);
-    if (!item) return;
-    const conn = item.connection;
-    const app = APP_BY_ID[conn.appId] ?? kernelApps.find((a) => a.id === conn.appId);
-    const name = app?.name ?? conn.appId;
-
-    let nextRules = rules;
-    if (scope === "app" || scope === "app-host") {
-      const rule: Rule = {
-        id: uid("rule"),
-        appId: conn.appId,
-        action,
-        scope: scope === "app" ? "app" : "app-host",
-        host: scope === "app-host" ? conn.remoteHost : undefined,
-        protocol: "ANY",
-        port: "ANY",
-        createdAt: Date.now(),
-        enabled: true,
-        hits: 1,
-      };
-      nextRules = [
-        ...rules.filter(
-          (r) =>
-            !(
-              r.appId === rule.appId &&
-              r.scope === rule.scope &&
-              r.host === rule.host &&
-              r.action !== rule.action
-            ),
-        ),
-        rule,
-      ];
-    }
-
-    const live: Connection = {
-      ...conn,
-      state: action === "allow" ? "established" : "blocked",
-      startedAt: Date.now(),
-    };
-
-    get().pushLog({
-      appId: conn.appId,
-      protocol: conn.protocol,
-      host: conn.remoteHost,
-      ip: conn.remoteIp,
-      port: conn.remotePort,
-      direction: conn.direction,
-      action,
-      reason:
-        scope === "once"
-          ? `${name} · once`
-          : scope === "app-host"
-            ? `${name} → ${conn.remoteHost}`
-            : `${name} · app`,
-    });
-
-    set((s) => ({
-      rules: nextRules,
-      pending: s.pending.filter((p) => p.id !== pendingId),
-      connections:
-        action === "allow"
-          ? [live, ...s.connections.filter((c) => c.id !== live.id)].slice(0, 90)
-          : s.connections,
-      blockedCount: s.blockedCount + (action === "block" ? 1 : 0),
-      allowedCount: s.allowedCount + (action === "allow" ? 1 : 0),
-    }));
-    get().persist();
-  },
-
-  addRule: (rule) => {
-    set((s) => ({
-      rules: [
-        ...s.rules,
-        { ...rule, id: uid("rule"), createdAt: Date.now(), hits: 0 },
-      ],
-    }));
-    get().persist();
-  },
-
-  removeRule: (id) => {
-    set((s) => ({ rules: s.rules.filter((r) => r.id !== id) }));
-    get().persist();
-  },
-
-  toggleRule: (id) => {
-    set((s) => ({
-      rules: s.rules.map((r) =>
-        r.id === id ? { ...r, enabled: !r.enabled } : r,
-      ),
-    }));
-    get().persist();
-  },
-
-  setAppAction: (appId, action) => {
-    set((s) => {
-      const without = s.rules.filter(
-        (r) => !(r.appId === appId && r.scope === "app"),
-      );
-      return {
-        rules: [
-          ...without,
-          {
-            id: uid("rule"),
-            appId,
-            action,
-            scope: "app",
-            protocol: "ANY",
-            port: "ANY",
-            createdAt: Date.now(),
-            enabled: true,
-            hits: 0,
-          },
-        ],
-      };
-    });
-    get().persist();
-  },
-
-  pushLog: (entry) => {
-    set((s) => ({
-      log: [{ ...entry, id: uid("log"), at: Date.now() }, ...s.log].slice(0, 250),
-    }));
-  },
-
-  pushSample: (sample) => {
-    set((s) => ({ samples: [...s.samples, sample].slice(-48) }));
-  },
-
-  setKernelStats: (k) => {
-    set({
-      kernelRx: k.rx,
-      kernelTx: k.tx,
-      kernelTcp: k.tcp,
-      kernelUdp: k.udp,
-      kernelApps: k.apps,
-      kernelLive: k.live ?? true,
-    });
-  },
-
-  mergeKernelConnections: (conns) => {
-    set((s) => {
-      const lab = s.connections.filter((c) => c.source !== "kernel");
-      const blockedIds = new Set(
-        s.connections.filter((c) => c.source === "kernel" && c.state === "blocked").map((c) => c.id),
-      );
-      const merged = conns.map((c) =>
-        blockedIds.has(c.id) ? { ...c, state: "blocked" as const } : c,
-      );
-      return { connections: [...merged, ...lab].slice(0, 120) };
-    });
-  },
-
-  hydrate: () => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw =
-        localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw) as {
-          rules?: Rule[];
-          settings?: Partial<Settings>;
+    patchSettings: (patch) => {
+      set((state) => {
+        const settings = validateSettings({ ...state.settings, ...patch });
+        // Sources are exclusive: switching modes cannot mix lab data with real sockets.
+        if (patch.labTraffic === true) settings.kernelCapture = false;
+        if (patch.kernelCapture === true) settings.labTraffic = false;
+        const modeChanged = settings.labTraffic !== state.settings.labTraffic || settings.kernelCapture !== state.settings.kernelCapture;
+        return {
+          settings,
+          connections: state.connections.filter((c) => c.source === "lab" ? settings.labTraffic : settings.kernelCapture),
+          pending: settings.labTraffic ? state.pending : [],
+          ...(modeChanged ? { samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null } : {}),
         };
-        set({
-          rules:
-            Array.isArray(data.rules) && data.rules.length > 0
-              ? data.rules
-              : defaultSystemRules(),
-          settings: {
-            ...defaultSettings,
-            ...data.settings,
-            language: isLocale(String(data.settings?.language ?? "de"))
-              ? (data.settings!.language as Locale)
-              : "de",
-          },
-        });
+      });
+      get().persist();
+    },
+    matchAction: (conn) => {
+      if (conn.source !== "lab") return null;
+      const { settings, rules } = get();
+      if (!settings.enabled) return "allow";
+      const hit = matchRule(rules, conn);
+      if (hit) {
+        set({ rules: rules.map((rule) => rule.id === hit.id ? { ...rule, hits: rule.hits + 1 } : rule) });
+        return hit.action;
       }
-    } catch {
-      /* ignore */
-    }
-    set({ hydrated: true });
-  },
-
-  persist: () => {
-    if (typeof window === "undefined") return;
-    const { rules, settings } = get();
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ rules, settings }));
-    } catch {
-      /* ignore */
-    }
-  },
-
-  reset: () => {
-    set({
-      rules: defaultSystemRules(),
-      settings: defaultSettings,
-      connections: [],
-      pending: [],
-      log: [],
-      samples: [],
-      blockedCount: 0,
-      allowedCount: 0,
-      kernelLive: false,
-    });
-    get().persist();
-  },
-}));
+      if (settings.autoAllowSystem && SYSTEM_APP_IDS.has(conn.appId)) return "allow";
+      const policy = conn.direction === "in" ? settings.inboundPolicy : settings.defaultPolicy;
+      return policy === "ask" ? null : policy;
+    },
+    enqueuePending: (conn) => {
+      if (conn.source !== "lab" || !get().settings.labTraffic) return;
+      set((state) => state.pending.some((item) => item.connection.id === conn.id) ? {} : {
+        pending: [...state.pending, { id: uid("pending"), connection: { ...conn, state: "pending" as const }, stacked: 1 }].slice(-60),
+      });
+    },
+    upsertConnection: (conn) => set((state) => ({ connections: [conn, ...state.connections.filter((c) => c.id !== conn.id)].slice(0, 1000) })),
+    tickConnections: (now) => {
+      if (!get().settings.labTraffic) return;
+      set((state) => ({ connections: state.connections.flatMap((conn): Connection[] => {
+        if (conn.source !== "lab") return [conn];
+        if (conn.state === "blocked") return [];
+        const age = now - conn.startedAt;
+        if (age > 25000 && Math.random() < 0.08) return [];
+        if (conn.state !== "established") return [conn];
+        const incoming = Math.round(200 + Math.random() * 14000);
+        const outgoing = Math.round(40 + Math.random() * 2800);
+        return [{ ...conn, bytesIn: conn.bytesIn + incoming, bytesOut: conn.bytesOut + outgoing, rateIn: incoming * 2, rateOut: outgoing * 2 }];
+      }) }));
+    },
+    decide: (pendingId, action, scope) => {
+      const item = get().pending.find((pending) => pending.id === pendingId);
+      if (!item || item.connection.source !== "lab") return;
+      const conn = item.connection;
+      if (scope !== "once") {
+        const rule: Rule = {
+          id: uid("rule"), appId: conn.appId, action, scope,
+          host: scope === "app-host" ? conn.remoteHost : undefined,
+          protocol: "ANY", port: "ANY", direction: "any", createdAt: Date.now(), enabled: true, hits: 0,
+        };
+        set((state) => ({ rules: [...state.rules.filter((r) => !(r.appId === rule.appId && r.scope === rule.scope && r.host === rule.host && (r.direction ?? "any") === "any" && (r.protocol ?? "ANY") === "ANY" && (r.port ?? "ANY") === "ANY")), rule] }));
+      }
+      const selected = get().pending.filter((pending) => scope === "once" ? pending.id === pendingId :
+        pending.connection.appId === conn.appId && (scope === "app" || pending.connection.remoteHost === conn.remoteHost));
+      const ids = new Set(selected.map((pending) => pending.id));
+      for (const pending of selected) {
+        const c = pending.connection;
+        const effective = scope === "once" ? action : (get().matchAction(c) ?? action);
+        get().upsertConnection({ ...c, state: effective === "allow" ? "established" : "blocked" });
+        get().pushLog({ appId: c.appId, protocol: c.protocol, host: c.remoteHost, ip: c.remoteIp, port: c.remotePort, direction: c.direction, action: effective, reason: `lab · ${scope}` });
+        set((state) => ({ blockedCount: state.blockedCount + Number(effective === "block"), allowedCount: state.allowedCount + Number(effective === "allow") }));
+      }
+      set((state) => ({ pending: state.pending.filter((pending) => !ids.has(pending.id)) }));
+      reevaluateLabConnections();
+      get().persist();
+    },
+    addRule: (input) => {
+      const rule = { ...input, id: uid("rule"), createdAt: Date.now(), hits: 0 };
+      if (!APP_BY_ID[rule.appId] || !isLabRule(rule)) return;
+      set((state) => ({ rules: [...state.rules, rule] }));
+      reevaluateLabConnections(); get().persist();
+    },
+    removeRule: (id) => { set((state) => ({ rules: state.rules.filter((rule) => rule.id !== id) })); get().persist(); },
+    toggleRule: (id) => {
+      set((state) => ({ rules: state.rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule) }));
+      reevaluateLabConnections(); get().persist();
+    },
+    setAppAction: (appId, action) => {
+      if (!APP_BY_ID[appId]) return;
+      const pending = get().pending.find((item) => item.connection.appId === appId);
+      if (pending) { get().decide(pending.id, action, "app"); return; }
+      set((state) => ({ rules: [...state.rules.filter((rule) => !(rule.appId === appId && rule.scope === "app")), {
+        id: uid("rule"), appId, action, scope: "app", protocol: "ANY", port: "ANY", direction: "any", createdAt: Date.now(), enabled: true, hits: 0,
+      }] }));
+      reevaluateLabConnections(); get().persist();
+    },
+    pushLog: (entry) => set((state) => ({ log: [{ ...entry, id: uid("log"), at: Date.now() }, ...state.log].slice(0, 250) })),
+    pushSample: (sample) => set((state) => ({ samples: [...state.samples, sample].slice(-48) })),
+    setKernelStats: (stats) => set({ kernelRx: stats.rx, kernelTx: stats.tx, kernelTcp: stats.tcp, kernelUdp: stats.udp, kernelApps: stats.apps, kernelLive: stats.live ?? true }),
+    mergeKernelConnections: (conns) => set((state) => ({ connections: [...conns, ...state.connections.filter((c) => c.source === "lab" && state.settings.labTraffic)] })),
+    hydrate: () => {
+      if (typeof window === "undefined") return;
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem("limen-firewall-v1");
+        if (raw) {
+          const data = JSON.parse(raw) as { rules?: unknown[]; settings?: unknown };
+          const settings = validateSettings(data.settings);
+          if (settings.labTraffic) settings.kernelCapture = false;
+          set({ settings, rules: Array.isArray(data.rules) ? data.rules.filter(isLabRule).filter((rule) => Boolean(APP_BY_ID[rule.appId])) : [] });
+        }
+      } catch { /* Invalid or unavailable browser storage cannot enable native rules. */ }
+      set({ hydrated: true });
+    },
+    persist: () => {
+      if (typeof window === "undefined") return;
+      try {
+        const { settings, rules } = get();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, rules }));
+      } catch { /* Storage can be disabled in a browser; native rules remain in Windows. */ }
+    },
+    reset: () => {
+      set({ settings: { ...defaultSettings }, rules: [], connections: [], pending: [], log: [], samples: [], kernelApps: [], kernelRx: 0, kernelTx: 0, kernelTcp: 0, kernelUdp: 0, kernelLive: false, captureError: null, blockedCount: 0, allowedCount: 0 });
+      // Reset affects the demonstration and display only. OS rules require explicit deletion.
+      get().persist();
+    },
+  };
+});

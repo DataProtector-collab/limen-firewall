@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0 — 2026-09-12
+
+### Windows desktop
+
+- Added a packaged Electron application and a restricted Windows PowerShell/NetSecurity bridge.
+- Read actual Windows TCP connections, UDP endpoints, process paths and adapter counters.
+- Create, list, enable, disable and remove persistent program rules owned by Limen. Confirm each mutation with Windows, including active-policy checks.
+- Added portable x64 and installer builds. Native management requires administrator privileges.
+- Removed obsolete Linux/web-server, authentication, database and deployment scaffolding from the application.
+
+### Correctness and safety
+
+- Replaced client-only claims of blocking with explicit native rule management. Observations never pretend packets are suspended or dropped.
+- Removed invented signature trust, per-process traffic estimates and packet-drop counters.
+- Isolated simulation and Windows rules; browser-local policies never migrate into Windows automatically.
+- Fixed unstable process identities, invalid stored settings, empty rule persistence, lab rule direction/port matching and stale capture responses.
+- Added scrollable accessible dialogs, truthful profile/capture/error status, and labeled local/remote endpoints.
+- Added native validation, backend, state, snapshot and policy regression tests plus an opt-in isolated enforcement test.
+
+### Known limits
+
+- No first-packet interception, global default-deny, WFP callout driver or DNS-domain rules.
+- Windows socket tables cannot reliably identify direction or remote UDP peers; unavailable data stays unknown.
+- Current native workflow is translated into German and English; other language selections fall back to English for updated content.
+- Initial Windows binaries are unsigned. Rules persist after app exit/uninstall.
+
+
 What landed, what broke, what got fixed. Newest on top.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), numbers follow SemVer.
 

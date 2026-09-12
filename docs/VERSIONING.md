@@ -5,6 +5,7 @@ Limen uses SemVer. Every upgrade you can see or feel gets a new number. No silen
 | Where | What |
 | --- | --- |
 | `src/lib/version.ts` | `APP_NAME`, `APP_VERSION`, `RELEASES` (Settings UI) |
+| `package.json` and lockfile | Build/package version; must match `APP_VERSION` |
 | `CHANGELOG.md` | What changed, in plain language |
 | git tag `vX.Y.Z` | freeze of the source |
 | Sidebar | shows `v` + `APP_VERSION` |
@@ -17,11 +18,13 @@ Limen uses SemVer. Every upgrade you can see or feel gets a new number. No silen
 
 ## Release checklist
 
-1. Bump `APP_VERSION`.
+1. Bump `APP_VERSION`, `package.json`, and the lockfile version together.
 2. Put a block at the top of `RELEASES` (Settings reads it as-is).
 3. Section in `CHANGELOG.md`.
 4. Touch the README if usage or limits changed.
 5. Tag `vX.Y.Z` on the same commit.
+6. Run tests, typecheck, production UI verification and Windows packaging. Record evidence in `docs/VALIDATION.md`.
+7. Attach installer, portable app and SHA-256 checksums to the GitHub release.
 
 Leave old versions in the changelog. Don’t rewrite them.
 
@@ -39,4 +42,6 @@ Reads `/proc/net` and maps sockets to processes. Eight more languages (en, zh, h
 
 Renamed Aegis → Limen. Docs English-first.
 
-Next minor would be real packet drop (nft/WFP) or a Windows driver. That’s 1.2, not a quiet patch.
+### 1.2.0 — 2026-09-12
+
+Native Windows desktop, real Windows Firewall rules and Windows socket enumeration. Explicit rule management replaces client-only blocking claims. No WFP callout driver or pre-connection packet hold is included.

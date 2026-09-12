@@ -1,5 +1,5 @@
 export const APP_NAME = "Limen";
-export const APP_VERSION = "1.1.1";
+export const APP_VERSION = "1.2.0";
 
 export interface ReleaseNote {
   version: string;
@@ -9,6 +9,18 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.2.0",
+    date: "2026-09-12",
+    title: "Windows desktop and real firewall rules",
+    items: [
+      "Windows TCP/UDP endpoint capture through a local desktop bridge.",
+      "Explicit persistent program rules verified against Windows Firewall; administrator privileges required.",
+      "Native capture and simulation are separate. No fabricated signatures, per-app traffic or packet-drop counters.",
+      "Connection observations do not hold packets. Windows rules and profile settings determine enforcement.",
+      "Safer rule persistence, state validation, polling, accessible dialogs and Windows packages.",
+    ],
+  },
   {
     version: "1.1.1",
     date: "2026-09-12",

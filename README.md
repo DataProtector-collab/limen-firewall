@@ -1,117 +1,101 @@
 # Limen
 
-Ask-first firewall. An app tries to go online — you allow or block. Version **1.1.1**.
+**See Windows connections. Create real Windows Firewall rules for the programs you choose.**
 
-*Limen* is Latin for threshold. Every outbound socket has to cross it. Not another “Aegis”.
+Limen **1.2.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release replaces that behavior with verified operating-system rule operations.
 
-| | |
+![Limen connection interface with explicitly labeled synthetic test data](docs/monitor.png)
+
+The screenshot uses the UI test fixture; it is not a capture of real network activity.
+
+[Windows downloads](https://github.com/DataProtector-collab/limen-firewall/releases/tag/v1.2.0) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Changes](CHANGELOG.md)
+
+## Install on Windows
+
+Use Windows 10/11 **x64**, with Windows PowerShell 5.1, the NetSecurity module, and Windows Defender Firewall available.
+
+1. Download **Limen-1.2.0-setup-x64.exe** for installation, or **Limen-1.2.0-portable-x64.exe** for the portable app.
+2. Starting the desktop app requests administrator privileges for Windows Firewall rule management. Without elevation, rule changes are unavailable.
+3. Open **Connections** to inspect observed programs. Create an explicit rule for a program, optionally limited to a literal remote IP, transport protocol, and port.
+4. Use **Rules** to inspect, disable, or remove rules created by Limen.
+
+The initial release is **unsigned**. Verify the release SHA-256 checksums and use source builds if you need to inspect the application before running it. It is not a replacement for your organization's endpoint protection.
+
+## How it works
+
+| Capability | Behavior |
 | --- | --- |
-| EN | Ask-first firewall. App wants the network: allow or block. |
-| DE | Firewall mit Nachfrage. App will raus: zulassen oder blockieren. |
-| 中文 | 先问再放行。应用要上网：允许或拦截。 |
-| हिन्दी | पहले पूछो। ऐप नेटवर्क चाहे: अनुमति या रोक। |
-| ES | Firewall que pregunta. La app quiere salir: permitir o bloquear. |
-| FR | Pare-feu qui demande. Une app sort : autoriser ou bloquer. |
-| العربية | جدار ناري يسأل. التطبيق يريد الشبكة: سماح أو حظر. |
-| বাংলা | আগে জিজ্ঞাসা। অ্যাপ নেট চায়: অনুমতি বা ব্লক। |
-| PT | Firewall que pergunta. A app quer a rede: permitir ou bloquear. |
+| Windows capture | `Get-NetTCPConnection`, `Get-NetUDPEndpoint`, process paths, and adapter byte counters. |
+| Blocking and allowing | Explicit program rules in Windows Defender Firewall, created through `New-NetFirewallRule`. Changes are read back from Windows before the UI reports success. |
+| Rule scope | Program, direction, optional literal remote IP, TCP/UDP, and port. An IP rule is not a domain-name rule. |
+| Persistence | Native rules remain stored when Limen closes. Windows enforces them while the matching policy and filtering category are active. Limen reads their state at startup. |
+| Isolation | Local renderer files and a restricted Electron IPC bridge. No privileged HTTP server, account, cloud database, or remote web UI. |
+| Browser preview | An explicitly labeled simulation lab. It cannot inspect the visitor's computer or change Windows Firewall. |
 
-UI: English · Deutsch · 中文 · हिन्दी · Español · Français · العربية · বাংলা · Português. Default is German. Switch under Settings. Arabic is RTL.
+**This is not a first-packet interception firewall.** Limen observes sockets after Windows has created them. A connection may already have sent traffic before you create a rule. Its dialogs do not suspend packets, and it does not install a Windows Filtering Platform callout driver or enable global default-deny.
 
-Windows’ own firewall is fine for inbound. Chrome, Discord, some updater from `%TEMP%` going *out*? Silence. No prompt, no chance. Limen flips that.
+Windows Firewall decides the final outcome. Explicit block rules take precedence over conflicting allow rules. Existing rules, disabled profiles, group policy, and other security products can affect enforcement. Limen reports its backend and profile status and does not disable Windows Firewall or rewrite system-wide profile defaults. See Microsoft's [rule precedence documentation](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules).
 
-When an app opens a connection you get this:
+Limen displays the rule's **ActiveStore** status. A stored rule reported as `Inactive / CategoryDisabled` is not treated as effective protection. This occurred on the development machine; see the [validation record](docs/VALIDATION.md) before relying on this early release.
 
-```
-Google Chrome  ·  chrome.exe  ·  Google LLC (signed)
+## What the monitor can tell you
 
-is trying to connect to the internet.
+- Real TCP states and UDP listening endpoints, process IDs, and executable paths when Windows permits access.
+- Adapter traffic totals. Per-program traffic and dropped-packet counts are **not measured** and are not fabricated.
+- UDP endpoint enumeration does not supply a remote peer. TCP socket enumeration also does not reliably identify connection direction; unknown values stay unknown.
+- A binary's signature is not assumed from its name or path. Unchecked signatures remain unknown.
+- Capture is periodic. Very short connections can be missed; inaccessible process paths and failed reads are reported rather than replaced with mock data.
 
-Target      www.google.com
-IP          142.250.185.46
-Protocol    HTTPS
-Port        443
-Direction   Outbound
+The optional simulation lab keeps its traffic and policies separate from Windows rules. Old browser-local rules are never silently installed into Windows.
 
-Rule applies to:  This time  |  App + host  |  Whole app
+## Build from source
 
-[ Block ]                         [ Allow ]
-```
-
-Same idea as TinyWall / Little Snitch. Just a console.
-
-<p align="center">
-  <img src="docs/prompt.png" alt="Limen prompt: Chrome wants google.com" width="720" />
-</p>
-
-## 1.1 — kernel capture
-
-From 1.1 the console reads the kernel socket table. `/proc/net/tcp`, `tcp6`, `udp`, `udp6`. Inodes are mapped to PID and binary through process file descriptors. Throughput comes from `/proc/net/dev`. Without that a firewall is just a panel.
-
-Unknown remote sockets with no rule go through the same prompt. Loopback and listen sockets show up in the table; they don’t nag. node, Vite and the preview proxy are pre-allowed so the console doesn’t hang itself.
-
-The Windows lab (Chrome, Discord, …) is still there, off by default. Turn it on if you want the prompt without a real socket.
-
-What changed per version: [CHANGELOG.md](CHANGELOG.md). How numbers work: [docs/VERSIONING.md](docs/VERSIONING.md). Settings shows the same list without markdown.
-
-## What it does
-
-Live table: process, PID, protocol, host, IP, port, direction, kernel/lab, throughput. Filters for TCP, UDP, HTTP, HTTPS, QUIC, DNS, ICMP, WebSocket, RDP.
-
-Unknown apps hit the prompt. System stuff and this runtime are pre-allowed.
-
-Unsigned binaries and inbound RDP get a warning. Don’t rubber-stamp `pcopt-svc.exe` from Temp.
-
-Rules live in `localStorage`. Per app, or app plus host. Toggle later.
-
-Settings: firewall on/off, kernel capture, lab, language, default ask / block / allow. Inbound is separate — RDP on 3389 is not Chrome on 443.
-
-<p align="center">
-  <img src="docs/monitor.png" alt="Limen live monitor with traffic and connection list" width="920" />
-</p>
-
-## What it isn’t
-
-No WFP driver, no `netsh advfirewall`. Block writes policy in the console. Dropping packets on the adapter needs nft/iptables in userspace or a Windows filter driver. Neither is on this host. Capture is real. Drop is not. That note is in Settings too, not only here.
-
-## Run
-
-Node 22.
+Use **Node.js 22.12 or newer** and npm. Windows is required to run and package the native backend.
 
 ```sh
-npm i
+git clone https://github.com/DataProtector-collab/limen-firewall.git
+cd limen-firewall
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm start
+```
+
+For native rule changes, start your development terminal as administrator. The packaged application requests elevation itself.
+
+```sh
+npm run dist:win
+```
+
+The portable executable and installer are written to `release/`. You can inspect the unpacked build with `npm run pack:win`.
+
+For browser-only interface development:
+
+```sh
 npm run dev
 ```
 
-Open it. The table fills from the kernel. **New connection** forces the prompt with a lab app, even if the lab is off.
+This serves the lab at `http://127.0.0.1:8080`; `npm run preview` serves the production browser build at `http://127.0.0.1:8081`.
 
-```sh
-npm run build
+## Safety and testing
+
+[SECURITY.md](SECURITY.md) documents the privilege boundary and limitations. [docs/VALIDATION.md](docs/VALIDATION.md) records the checks performed for this release and distinguishes automated regression tests from native enforcement tests.
+
+Closing or uninstalling Limen does **not** remove its persistent Windows rules. Review and remove unwanted Limen rules before uninstalling, or use Windows Defender Firewall with Advanced Security to find the Limen rule group. Limen does not manage other applications' rules.
+
+## Project layout
+
+```text
+desktop/                  Electron main/preload, Windows backend, native tests
+src/lib/firewall/         Capture adapter, validated state, lab engine, tests
+src/components/firewall/  Monitor, programs, native/lab rules, settings, dialogs
+src/lib/i18n/             Nine interface languages
+docs/                    Screenshots and validation notes
 ```
 
-## Layout
-
-```
-src/lib/firewall/            catalog, engine, store, kernel reader
-src/lib/firewall/kernel-read.server.ts
-                             /proc/net parser, inode → PID
-src/lib/i18n/                9 languages
-src/lib/version.ts           APP_NAME, APP_VERSION, release notes
-src/components/firewall/     prompt, monitor, apps, rules, log
-CHANGELOG.md
-docs/VERSIONING.md
-```
-
-`kernel-read.server.ts` reads the tables. `engine.ts` polls once a second and pushes new sockets into the prompt. `store.ts` is state + persist.
-
-## Notes
-
-Rules survive a reload. The log does not — that’s session data.
-
-Prompt too loud: Settings → default policy Allow. Then only explicit block rules fire. Flip to Block for default-deny.
-
-Next visible feature bump is 1.2, not a silent 1.1.2.
+The desktop entry is `src/main.tsx`; obsolete web-server, account, database and deployment scaffolding has been removed. English and German include the current native workflow; other interface languages use explicit English fallbacks where translations are not available.
 
 ## License
 
-MIT. Do what you want with it.
+[MIT](LICENSE). Copyright 2026 DataProtector-collab.

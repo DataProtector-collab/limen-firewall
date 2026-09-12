@@ -1,0 +1,33 @@
+appId: dev.limen.firewall
+productName: Limen
+asar: true
+directories:
+  output: release
+files:
+  - dist/**/*
+  - desktop/**/*.cjs
+  - '!desktop/**/*.test.cjs'
+  - package.json
+extraResources:
+  - from: desktop/windows-firewall.ps1
+    to: windows-firewall.ps1
+win:
+  icon: public/limen.ico
+  target:
+    - target: portable
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+  requestedExecutionLevel: requireAdministrator
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+portable:
+  artifactName: 'Limen-${version}-portable-${arch}.${ext}'
+  requestExecutionLevel: admin
+nsis:
+  artifactName: 'Limen-${version}-setup-${arch}.${ext}'
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  deleteAppDataOnUninstall: false
+  runAfterFinish: false

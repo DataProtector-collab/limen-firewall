@@ -1,0 +1,36 @@
+name: Validate and package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          LIMEN_WINDOWS_READ_TEST: '1'
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Verify isolated Windows Firewall enforcement
+        run: node desktop/firewall-selftest.cjs --confirm-isolated-firewall-test --report "${{ github.workspace }}/artifacts/native-enforcement.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-enforcement-evidence
+          path: artifacts/native-enforcement.json
+          if-no-files-found: warn
+      - run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limen-windows-x64
+          path: release/*.exe
+          if-no-files-found: error
