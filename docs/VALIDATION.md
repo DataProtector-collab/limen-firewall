@@ -16,7 +16,7 @@ Limen now exposes ActiveStore status and registered external firewall providers.
 
 ## Independent Windows enforcement test: passed
 
-[GitHub Actions run 34709565018](https://github.com/DataProtector-collab/limen-firewall/actions/runs/34709565018) tested code revision `585bba95097e14b743b3547d0552b31e34a6d26f` on 2026-09-12. Its 41 tests, typecheck, lint, actual packet test, and Windows packaging succeeded.
+[GitHub Actions run 34709909905](https://github.com/DataProtector-collab/limen-firewall/actions/runs/34709909905) tested the v1.2.0 release revision `b2b7afbe3659002c524242fd7cf57cd321bb3475` on 2026-09-12. All 47 tests passed with zero skipped; typecheck, lint, the actual packet test, and Windows packaging also succeeded. The disposable runner used Windows Server 2025, build 26100.
 
 | Stage | Observed result |
 | --- | --- |
@@ -27,9 +27,39 @@ Limen now exposes ActiveStore status and registered external firewall providers.
 | Remove the rule | A new connection succeeded. |
 | Cleanup | Test rule and temporary executable directory removed. |
 
-The disposable runner had no registered external firewall provider. Its ActiveStore reported `OK` with `ProfileInactive` and `Enforced` entries: status can differ across profiles, even while the tested connection is blocked. The interface preserves these details instead of treating every code other than `Full` as wholly inactive. Later changes refine this status display; the native enforcement implementation is unchanged from the linked tested revision.
+The disposable runner had no registered external firewall provider. Its ActiveStore reported `OK` with `ProfileInactive` and `Enforced` entries: status can differ across profiles, even while the tested connection is blocked. The interface preserves these details instead of treating every code other than `Full` as wholly inactive.
 
 This is evidence for the isolated outbound TCP scenario on that runner. It is not a test of every application, inbound service, UDP flow, policy combination, or third-party firewall. The workflow continues to run the same packet test before packaging later revisions.
+
+## Windows 10 VM validation of release 1.2.0
+
+On 2026-09-12, the v1.2.0 artifacts identified below were tested in a disposable Windows 10 Pro VM, build 19045.
+
+| Check | Observed result |
+| --- | --- |
+| Installer and uninstall persistence | Installation succeeded. The isolated test rule was verified before uninstalling and remained in Windows afterward. Removal of the test rule, application, and temporary files was confirmed. This checked persistence, not packets. |
+| Outbound TCP enforcement | Baseline HTTPS succeeded. A fresh connection failed with the isolated executable's block rule enabled, succeeded after disabling it, failed after re-enabling it, and succeeded after removal. Rule and temporary-executable cleanup was confirmed. |
+| Inbound TCP enforcement | A scoped allow rule established successful nonce-echo traffic. With the corresponding block enabled, two fresh probes timed out. Disabling restored replies; re-enabling caused another timeout; removal restored replies again. Test-rule and temporary-file cleanup was confirmed. |
+| Inbound UDP enforcement | Each probe used a fresh guest receiver and a unique nonce. Delivery was observed with the scoped allow rule, absent in two blocked probes, restored after disabling the block, absent after re-enabling, and restored after removal. The receiver stayed alive, and all six host send callbacks reported 65 bytes without an error. This measured one-way delivery, not round-trip echo. |
+| Outbound UDP enforcement | A dedicated executable exchanged validated DNS queries for `example.com` with the VM's NAT DNS service. Baseline replies succeeded, two blocked probes timed out, disabling restored replies, re-enabling caused another timeout, and removal restored replies. Response source, transaction, question, and answer structure were checked. |
+| Portable desktop startup | A 25-second observation recorded a window handle, renderer, and GPU process. The main process and renderer were alive at the end of the observation. No crash events or fatal-log evidence were captured. No firewall mutation was requested. |
+
+Earlier UDP echo baselines failed before a UDP block rule was created. Diagnostics showed the inbound packet reaching the guest and the guest reporting a reply send, while the host saw no reply; the outbound host echo baseline also timed out. Those runs were not counted as enforcement passes. The subsequent UDP-only run passed using direct guest receipt for inbound traffic and a validated DNS exchange for outbound traffic. The cause of the original host echo failure remains unresolved.
+
+All temporary rules, probe files, and scoped NAT forwards were confirmed removed after the final network run. Global firewall profiles and unrelated rules were unchanged. The verified application remains installed in the VM for further use; its application archive and native backend matched the release build.
+
+**Native visual and interactive UI verification remains incomplete.** The startup report explicitly records `visualUiVerified: false`; process and window presence do not prove correct rendering. Earlier browser checks with a fake native bridge remain separate evidence.
+
+The packet-test guest reported no registered external firewall provider. The tested TCP block rules reported ActiveStore `OK` with `ProfileInactive` and `Enforced` entries. Enforcement conclusions above come from observed packet delivery and replies through repeated rule transitions, not from those status codes alone. These results cover isolated programs in one VM, not every application, Windows policy, or third-party firewall.
+
+### Tested release artifacts
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `Limen-1.2.0-setup-x64.exe` | `972c4e2a15a3b8efb42b4e6bf7bbfe8c7d217f865b7f0a8e24f787c0499517ea` |
+| `Limen-1.2.0-portable-x64.exe` | `42d271feb3196015b49d4a6b2781d63bee6721017ceea7efe31ecb578531f54f` |
+
+The installed native backend matched SHA-256 `b2a48608ba17798624006aaf3e8df942e7497b8244b922404663c334b3c0d93a`. Private machine identifiers, account names, local paths, and raw logs are omitted.
 
 ## Reproduce
 
