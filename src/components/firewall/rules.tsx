@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { APPS } from "@/lib/firewall/catalog";
 import { directionLabel } from "@/lib/firewall/format";
+import { classifyEnforcement } from "@/lib/firewall/enforcement";
 import { isNativeDesktop, type NativeRule } from "@/lib/firewall/native-types";
 import { useFirewall } from "@/lib/firewall/store";
 import { useT } from "@/lib/i18n/use-t";
@@ -166,11 +167,14 @@ function RuleEnforcement({ rule }: { rule: NativeRule }) {
   const t = useT();
   const primary = rule.primaryStatus?.trim();
   const enforcement = rule.enforcementStatus?.filter(Boolean) ?? [];
-  const complete = Boolean(primary && enforcement.length);
-  const inactive = Boolean(
-    (primary && primary !== "OK") || enforcement.some((status) => status !== "Full"),
-  );
-  const warning = inactive || !complete;
+  const status = classifyEnforcement(rule);
+  const warning = status !== "reported";
+  const statusKey = {
+    inactive: "native.enforcementInactive",
+    mixed: "native.enforcementMixed",
+    unknown: "native.enforcementUnknown",
+    reported: "native.enforcementReported",
+  }[status];
   return (
     <div
       className={
@@ -179,15 +183,7 @@ function RuleEnforcement({ rule }: { rule: NativeRule }) {
           : "mt-2 text-xs text-muted"
       }
     >
-      <p className={warning ? "font-medium" : undefined}>
-        {t(
-          inactive
-            ? "native.enforcementInactive"
-            : !complete
-              ? "native.enforcementUnknown"
-              : "native.enforcementReported",
-        )}
-      </p>
+      <p className={warning ? "font-medium" : undefined}>{t(statusKey)}</p>
       {primary || enforcement.length ? (
         <p className="mt-1 break-words">
           {t("native.enforcementReasons", {

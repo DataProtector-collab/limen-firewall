@@ -4,7 +4,7 @@ This is an early native Windows release. A saved rule is not proof that packets 
 
 ## Local checks
 
-The development machine runs Windows 10 with Node.js 24.19.0. Automated engine, state, validation, IPC, and backend tests, the opt-in Windows read smoke test, TypeScript checks, ESLint, and the production web build pass. The isolated native lifecycle test passes: create, read back, disable, enable, remove, and verify cleanup. No existing firewall rule is changed by that test.
+The development machine runs Windows 10 with Node.js 24.19.0. Automated engine, state, validation, IPC, and backend tests, the opt-in Windows read smoke test, TypeScript checks, ESLint, and the production web build pass. The isolated native lifecycle test passes: create, read back, disable, enable, remove, and verify cleanup. No existing firewall rule is changed by that test. A real DOS 8.3 path regression covers Windows normalizing short paths to their long spelling.
 
 Browser UI checks use a clearly labeled fake native bridge. They cover connection display, IPv6 and UDP unknown peers, rule form controls, a rejected save with preserved input, retry, and a scrollable keyboard-trapped dialog at a 390 × 844 viewport. These checks test the interface, not Windows enforcement.
 
@@ -12,9 +12,24 @@ Browser UI checks use a clearly labeled fake native bridge. They cover connectio
 
 The real outbound network block test on the development machine **failed**: the isolated executable could still establish a new HTTPS connection after its block rule had been stored. Windows reported the rule's ActiveStore state as `Inactive / CategoryDisabled`; its PersistentStore state alone did not reveal this problem. A third-party firewall, Bitdefender, was registered on that machine. This is context, not proof of the cause.
 
-Limen now exposes ActiveStore status and registered external firewall providers. It warns when Windows does not report a rule as fully active. Even `OK / Full` is Windows-reported state, not a measured packet result. No global profile, Windows security service, or third-party protection was disabled to obtain a passing test.
+Limen now exposes ActiveStore status and registered external firewall providers. It distinguishes inactive, unknown, and profile-dependent enforcement. Windows-reported state alone is not a measured packet result. No global profile, Windows security service, or third-party protection was disabled to obtain a passing test.
 
-An independent Windows CI job runs the same isolated packet test before packaging. Its result must be checked for the exact revision; the workflow's existence is not a passing result.
+## Independent Windows enforcement test: passed
+
+[GitHub Actions run 34709565018](https://github.com/DataProtector-collab/limen-firewall/actions/runs/34709565018) tested code revision `585bba95097e14b743b3547d0552b31e34a6d26f` on 2026-09-12. Its 41 tests, typecheck, lint, actual packet test, and Windows packaging succeeded.
+
+| Stage | Observed result |
+| --- | --- |
+| Baseline HTTPS | Connected successfully. |
+| Create outbound TCP block for the isolated test executable | A new connection failed. |
+| Disable the rule | A new connection succeeded. |
+| Enable the rule again | A new connection failed again. |
+| Remove the rule | A new connection succeeded. |
+| Cleanup | Test rule and temporary executable directory removed. |
+
+The disposable runner had no registered external firewall provider. Its ActiveStore reported `OK` with `ProfileInactive` and `Enforced` entries: status can differ across profiles, even while the tested connection is blocked. The interface preserves these details instead of treating every code other than `Full` as wholly inactive. Later changes refine this status display; the native enforcement implementation is unchanged from the linked tested revision.
+
+This is evidence for the isolated outbound TCP scenario on that runner. It is not a test of every application, inbound service, UDP flow, policy combination, or third-party firewall. The workflow continues to run the same packet test before packaging later revisions.
 
 ## Reproduce
 

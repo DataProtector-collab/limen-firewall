@@ -200,7 +200,7 @@ const fixture: LimenNativeBridge = {
       enabled: true,
       createdAt: Date.now(),
       primaryStatus: "OK",
-      enforcementStatus: ["Full"],
+      enforcementStatus: ["ProfileInactive", "Enforced"],
     };
     rules.set(rule.id, rule);
     return structuredClone(rule);
@@ -215,7 +215,7 @@ const fixture: LimenNativeBridge = {
       ...rule,
       enabled,
       primaryStatus: enabled ? "OK" : "Inactive",
-      enforcementStatus: enabled ? ["Full"] : ["DisabledObject"],
+      enforcementStatus: enabled ? ["ProfileInactive", "Enforced"] : ["DisabledObject"],
     };
     rules.set(id, updated);
     return structuredClone(updated);

@@ -123,7 +123,8 @@ const en: Record<string, string> = {
   "native.saved": "Saved in Windows",
   "native.enforcementInactive": "Windows reports rule inactive",
   "native.enforcementUnknown": "Enforcement status unknown",
-  "native.enforcementReported": "Windows reports rule active",
+  "native.enforcementReported": "Windows reports enforcement",
+  "native.enforcementMixed": "Windows reports profile-dependent or mixed enforcement",
   "native.enforcementReasons": "Windows status: {reasons}",
   "native.enforcementHint":
     "Rule status comes from Windows active policy. It is not a packet-blocking test; another firewall provider can make a saved rule inactive.",
@@ -320,7 +321,8 @@ const de: Record<string, string> = {
   "native.saved": "In Windows gespeichert",
   "native.enforcementInactive": "Windows meldet die Regel als inaktiv",
   "native.enforcementUnknown": "Status der Regeldurchsetzung unbekannt",
-  "native.enforcementReported": "Windows meldet die Regel als aktiv",
+  "native.enforcementReported": "Windows meldet Regeldurchsetzung",
+  "native.enforcementMixed": "Windows meldet profilabhängige oder gemischte Regeldurchsetzung",
   "native.enforcementReasons": "Windows-Status: {reasons}",
   "native.enforcementHint":
     "Der Regelstatus stammt aus der aktiven Windows-Richtlinie. Er ist kein Test der Paketblockierung; ein anderer Firewallanbieter kann eine gespeicherte Regel unwirksam machen.",
