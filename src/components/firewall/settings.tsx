@@ -3,7 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ModalContent } from "@/components/firewall/native-controls";
-import { isNativeDesktop } from "@/lib/firewall/native-types";
+import { getNativeBridge, isNativeDesktop } from "@/lib/firewall/native-types";
 import { useFirewall } from "@/lib/firewall/store";
 import type { DefaultPolicy } from "@/lib/firewall/types";
 import { LOCALES, LOCALE_META } from "@/lib/i18n";
@@ -17,8 +17,15 @@ export function SettingsView() {
   const patch = useFirewall((s) => s.patchSettings);
   const reset = useFirewall((s) => s.reset);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [quitError, setQuitError] = useState<string | null>(null);
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      {isNativeDesktop() ? <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
+        <h2 className="text-sm font-medium">{settings.language === "de" ? "Infobereich und Beenden" : "Notification area and exit"}</h2>
+        <p className="text-xs text-muted">{settings.language === "de" ? "Das X blendet Limen aus. Über das Limen-Symbol im Infobereich öffnest du es wieder. Beobachtung und ein aktiver Freigabemodus laufen weiter. Beim tatsächlichen Beenden erscheint eine Sicherheitsabfrage." : "The X hides Limen. Open it again using its notification area icon. Observation and an active approval mode continue. Exiting the application requires confirmation."}</p>
+        <Button variant="outline" disabled={!getNativeBridge()?.quitApplication} onClick={async () => { setQuitError(null); try { await getNativeBridge()?.quitApplication?.(); } catch (error) { setQuitError(error instanceof Error ? error.message : String(error)); } }}>{settings.language === "de" ? "Limen beenden…" : "Exit Limen…"}</Button>
+        {quitError ? <p role="alert" className="text-sm text-block">{quitError}</p> : null}
+      </section> : null}
       {isNativeDesktop() ? (
         <Row title={t("set.observe")} hint={t("set.observeHint")}>
           <Switch

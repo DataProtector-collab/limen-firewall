@@ -45,7 +45,7 @@ export type DecisionScope = "once" | "app-host" | "app";
 export type AppCategory =
   "system" | "browser" | "chat" | "game" | "media" | "office" | "util" | "unknown";
 
-export type ViewId = "monitor" | "war" | "blackbox" | "apps" | "rules" | "log" | "settings";
+export type ViewId = "monitor" | "map" | "approval" | "war" | "blackbox" | "apps" | "rules" | "log" | "settings";
 
 export type DefaultPolicy = "ask" | "allow" | "block";
 

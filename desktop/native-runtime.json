@@ -1,0 +1,16 @@
+{
+  "version": "1.4.0",
+  "architecture": "x64",
+  "files": [
+    {
+      "sha256": "3237336f79c8e847a0692c769700e0b4c91678a7b1c8372ed35ebee97dd2daba",
+      "size": 292352,
+      "name": "Limen.Approval.Core.dll"
+    },
+    {
+      "sha256": "0c7beb35eb8cad9b29a97dc2c8ad7e445331d26ce190c7489feefb2a3d298ef6",
+      "size": 219136,
+      "name": "Limen.Approval.Host.exe"
+    }
+  ]
+}

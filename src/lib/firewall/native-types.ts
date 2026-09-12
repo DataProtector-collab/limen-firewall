@@ -1,5 +1,7 @@
 import type { KernelSnapshot } from "./kernel-types";
 import type { ProcessIdentity, ProcessInspection, ProcessSnapshot } from "./observation-types";
+import type { ApprovalInput, ApprovalStatus } from "./approval-types";
+import type { GeoSnapshot } from "./geo-types";
 
 export interface NativeRuleInput {
   program: string;
@@ -48,6 +50,13 @@ export interface LimenNativeBridge {
   applyRule(input: NativeRuleInput): Promise<NativeRule>;
   removeRule(id: string): Promise<unknown>;
   setRuleEnabled(id: string, enabled: boolean): Promise<NativeRule>;
+  getApprovalStatus?(): Promise<ApprovalStatus>;
+  startApproval?(): Promise<ApprovalStatus>;
+  stopApproval?(): Promise<ApprovalStatus>;
+  decideApproval?(input: ApprovalInput): Promise<ApprovalStatus>;
+  quitApplication?(): Promise<void>;
+  onApprovalAttention?(listener: () => void): () => void;
+  getGeoLocations?(addresses: string[]): Promise<GeoSnapshot>;
 }
 
 declare global {

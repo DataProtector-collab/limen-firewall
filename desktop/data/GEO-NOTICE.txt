@@ -1,0 +1,30 @@
+OFFLINE GEOLOCATION DATA
+
+IP Geolocation by DB-IP (https://db-ip.com)
+DB-IP Lite IP to Country, September 2026.
+Source: https://db-ip.com/db/download/ip-to-country-lite
+Licensed under Creative Commons Attribution 4.0 International.
+License: https://creativecommons.org/licenses/by/4.0/
+The full license is included as CC-BY-4.0.txt in this directory.
+
+Changes: Original CSV ranges were sorted and encoded into the Limen binary
+range format and gzip-compressed. Country values were retained. The lookup
+withholds private and special-purpose addresses. This is an approximate
+country dataset with reduced coverage and accuracy, not a city/server locator.
+DB-IP does not endorse Limen. Database source and derived SHA-256 values are
+recorded in geo-provenance.json. This data license is separate from Limen code.
+
+MAP
+
+Made with Natural Earth (https://www.naturalearthdata.com).
+Natural Earth 1:50m admin-0 countries, public domain.
+Terms: https://www.naturalearthdata.com/about/terms-of-use/
+Country label coordinates and German/English names were extracted. Polygon
+paths were projected equirectangularly, simplified and rounded for display.
+Dots represent country labels, not measured coordinates of remote machines.
+Small territories absent from the label dataset remain without a map point.
+
+Rebuild instructions:
+Download the source files identified in geo-provenance.json. Verify their
+SHA-256 values. Run scripts/build-geo-data.mjs with the two local source paths.
+No data is fetched automatically and no captured endpoint list is transmitted.

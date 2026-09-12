@@ -8,6 +8,8 @@ import {
   Radar,
   Radio,
   Settings2,
+  Globe2,
+  ShieldQuestion,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppsView } from "@/components/firewall/apps";
@@ -15,13 +17,16 @@ import { LogView } from "@/components/firewall/log";
 import { MonitorView } from "@/components/firewall/monitor";
 import { BlackboxView } from "@/components/firewall/blackbox";
 import { WarMonitorView } from "@/components/firewall/war-monitor";
+import { ConnectionMapView } from "@/components/firewall/connection-map";
+import { ConnectionApprovalView } from "@/components/firewall/connection-approval";
 import { PromptOverlay } from "@/components/firewall/prompt-overlay";
 import { RulesView } from "@/components/firewall/rules";
 import { SettingsView } from "@/components/firewall/settings";
 import { NativeError, NativeStatusPanel } from "@/components/firewall/native-controls";
 import { simulateConnection, startEngine } from "@/lib/firewall/engine";
 import type { KernelSnapshot } from "@/lib/firewall/kernel-types";
-import { isNativeDesktop } from "@/lib/firewall/native-types";
+import { getNativeBridge, isNativeDesktop } from "@/lib/firewall/native-types";
+import { startApprovalObservation, useApproval } from "@/lib/firewall/approval-store";
 import { useFirewall } from "@/lib/firewall/store";
 import type { ViewId } from "@/lib/firewall/types";
 import { useT } from "@/lib/i18n/use-t";
@@ -30,6 +35,8 @@ import { cn } from "@/lib/utils";
 
 const NAV: { id: ViewId; key: string; icon: typeof Activity }[] = [
   { id: "monitor", key: "nav.monitor", icon: Activity },
+  { id: "map", key: "nav.map", icon: Globe2 },
+  { id: "approval", key: "nav.approval", icon: ShieldQuestion },
   { id: "war", key: "nav.war", icon: Radar },
   { id: "blackbox", key: "nav.blackbox", icon: Box },
   { id: "apps", key: "nav.apps", icon: AppWindow },
@@ -49,6 +56,9 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
   const error = useFirewall((s) => s.captureError);
   const status = useFirewall((s) => s.nativeStatus);
   const native = isNativeDesktop();
+  const approval = useApproval((s) => s.status);
+  const approvalError = useApproval((s) => s.error);
+  const awaitingApproval = approval?.attempts.filter((item) => item.decision === "pending").length ?? 0;
   const statusNeedsAttention = Boolean(
     status &&
     (!status.available ||
@@ -58,6 +68,11 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
       status.profiles?.some((profile) => !profile.enabled)),
   );
   useEffect(() => startEngine(initialSnap), [initialSnap]);
+  useEffect(() => startApprovalObservation(), []);
+  useEffect(() => getNativeBridge()?.onApprovalAttention?.(() => {
+    setView("approval");
+    void useApproval.getState().refresh();
+  }), [setView]);
   useEffect(() => {
     document.documentElement.lang = language === "de" ? "de" : "en";
     document.documentElement.dir = "ltr";
@@ -153,6 +168,11 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
             <div className="sticky top-24 z-40">
               <NativeError dismissible />
             </div>
+            {native && view !== "approval" && (approval?.active || approvalError) ? (
+              <button type="button" onClick={() => setView("approval")} className="w-full rounded-lg border border-accent/40 bg-surface p-3 text-start text-sm">
+                {approvalError ? t("approval.unavailable") : `${t("approval.active")} · ${awaitingApproval} ${t("approval.pending")}`}
+              </button>
+            ) : null}
             {native && error ? (
               <p
                 role="alert"
@@ -163,6 +183,10 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
             ) : null}
             {view === "monitor" ? (
               <MonitorView />
+            ) : view === "map" ? (
+              <ConnectionMapView />
+            ) : view === "approval" ? (
+              <ConnectionApprovalView />
             ) : view === "war" ? (
               <WarMonitorView />
             ) : view === "blackbox" ? (
@@ -180,7 +204,7 @@ export function FirewallShell({ initialSnap }: { initialSnap?: KernelSnapshot | 
         </div>
       </div>
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-surface md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface md:hidden"
         aria-label={APP_NAME}
       >
         {NAV.map(({ id, key, icon: Icon }) => (

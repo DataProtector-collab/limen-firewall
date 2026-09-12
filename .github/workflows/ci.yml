@@ -22,11 +22,16 @@ jobs:
       - run: npm run lint
       - name: Verify isolated Windows Firewall enforcement
         run: node desktop/firewall-selftest.cjs --confirm-isolated-firewall-test --report "${{ github.workspace }}/artifacts/native-enforcement.json"
+      - run: npm run native:prepare
+      - name: Verify isolated connection approval enforcement
+        run: node desktop/approval-selftest.cjs --confirm-isolated-approval-test --report "${{ github.workspace }}/artifacts/approval-enforcement.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: native-enforcement-evidence
-          path: artifacts/native-enforcement.json
+          path: |
+            artifacts/native-enforcement.json
+            artifacts/approval-enforcement.json
           if-no-files-found: warn
       - run: npm run dist:win
       - uses: actions/upload-artifact@v4

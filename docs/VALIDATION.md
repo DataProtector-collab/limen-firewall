@@ -2,6 +2,77 @@
 
 Limen is an early native Windows application. A saved rule is not proof that packets are blocked. Results below are scoped to the version and scenario tested.
 
+## 1.4.0 connection map and native approval
+
+All **103 automated tests passed with zero skipped**, including actual Windows
+read smoke tests. Typecheck, ESLint, production build and both Windows packages
+passed. The installed executable's embedded ASAR header hash matched the archive;
+all five configured Electron fuses were verified. The final packaged main,
+lifecycle, approval bridge and native hash manifest matched their source files.
+
+The new native C++ DLL and host were tested in the dedicated Windows 10 VM with
+a temporary executable. The public integration harness also passed separately:
+
+| Check | Observed result |
+| --- | --- |
+| Before a decision | The dedicated TCP request failed with `AccessDenied`; a UDP DNS request timed out. Real WFP drop events identified the test executable, protocol and exact destination under Limen's own filter IDs. |
+| Deny | A denied TCP attempt remained blocked. |
+| Endpoint permission | A UDP destination permission allowed a successful, validated DNS retry while TCP remained blocked. |
+| Program permission | Both TCP and UDP retries succeeded after program approval. A new session did not retain previous decisions. |
+| Windows policy precedence | An independent explicit Windows block for the test executable still blocked TCP despite its WFP approval. Removing only that test rule restored connectivity. |
+| Session lifetime | Stopping the session restored the previous connectivity. Killing the native host also removed its dynamic blocking filters; subsequent TCP and UDP requests succeeded. Recovery status reported an inactive session and the preceding host failure. |
+| Cleanup | The public test reported its rule removed, temporary directory removed and native host stopped. Independent VM inspection found no probe processes, native test hosts or test directories. |
+
+The **installed Windows application** was exercised through its actual file
+renderer, preload, IPC, native DLL and Windows network stack. No substituted
+bridge, injected renderer state or synthetic packet result supplied the evidence.
+
+- The offline database resolved actual IPv4 and IPv6 input addresses and kept
+  loopback separate. A real public TCP socket produced a country dot; country
+  selection and IP/source filtering worked. Country assignment was checked
+  against the bundled source data, not treated as a server's exact location.
+- The activation dialog could be cancelled without enabling protection. After
+  activation through the UI, the dedicated executable was blocked before its
+  request appeared. Its real program and endpoint appeared in the pending card.
+- Clicking **Allow this destination** changed the native session and the
+  executable's next TCP attempt succeeded. The map retained the original blocked
+  attempt with a later approval label, without claiming packet delivery from the
+  decision itself. Turning the mode off through its dialog restored connectivity.
+- Persistent Windows rule fields were unchanged by the approval UI test.
+- Map layouts at **980 × 650** and **390 × 844** had no document horizontal
+  overflow. The installed renderer reported no page errors.
+
+The final installer was then exercised against the actual Windows notification
+area. X hid the window while retaining the main process. A physical click on
+Limen's notification icon restored it; launching the executable again restored
+the same original instance. **Quit** opened the real native confirmation dialog:
+**Keep running** preserved the process, and a second **Quit / Confirm** ended it.
+Afterward, no Limen process, native host or test debugging listener remained,
+and persistent Limen rules were unchanged. The installed ASAR and native binary
+hashes matched the final packages listed below.
+
+A clean directory containing only the public runtime preparation script and
+its validation dependencies successfully downloaded the published native DLL
+and host. Both sizes and SHA-256 hashes matched the pinned manifest.
+
+Native packet testing covered **outbound IPv4 TCP and UDP**. IPv6 filters were
+installed and read back, and IPv6 GeoIP lookup was tested, but the VM had no
+routable IPv6 target for a packet test. These results do not establish universal
+compatibility with VPNs, third-party filter drivers, organization policies or
+every application. The approval mode is temporary and ends if its host exits;
+it is not a boot-time or fail-closed service. See
+[connection controls and limitations](CONNECTION-CONTROL.md).
+
+Final release SHA-256:
+
+```text
+84a2d1355049d03078471f46ad626e006393eaa65a3e02b7e3607e91a058c913  Limen-1.4.0-setup-x64.exe
+ee32b5a48f48cc4edc1cad7fcf92a086dba79e8b271f32170944d1f863ced01b  Limen-1.4.0-portable-x64.exe
+51b76fc6e7d16c282376fe2f3d7b77d0d21c9225bf77397f39a717fc84cc18a4  app.asar
+3237336f79c8e847a0692c769700e0b4c91678a7b1c8372ed35ebee97dd2daba  Limen.Approval.Core.dll
+0c7beb35eb8cad9b29a97dc2c8ad7e445331d26ce190c7489feefb2a3d298ef6  Limen.Approval.Host.exe
+```
+
 ## 1.3.0 process inspection and observation tools
 
 All **73 automated tests passed with zero skipped**, including actual Windows read smoke tests. Typecheck, ESLint, production build and both Windows packages passed. The new regression coverage distinguishes observation gaps, PID reuse and changing availability of process metadata from actual new connections; it also checks detector warmup, bounded memory, partial inspection failures and frozen destination references.

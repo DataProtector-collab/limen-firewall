@@ -1,5 +1,5 @@
 export const APP_NAME = "Limen";
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 export interface ReleaseNote {
   version: string;
@@ -9,6 +9,18 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.4.0",
+    date: "2026-09-12",
+    title: "Offline world map, notification area and native Internet approvals",
+    items: [
+      "Map real peer countries with an offline IP database and explicit location limits.",
+      "Keep Limen running in the notification area when X is clicked; confirm actual exit.",
+      "Block unknown outbound public TCP/UDP attempts in an explicit native approval session.",
+      "Review real WFP events and allow a destination or program for the current session.",
+      "Verify the separately licensed native runtime and harden packaged Electron integrity.",
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-09-12",

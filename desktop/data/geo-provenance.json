@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "database": {
+    "provider": "DB-IP Lite",
+    "release": "2026-09",
+    "source": "https://download.db-ip.com/free/dbip-country-lite-2026-09.csv.gz",
+    "sourceSha256": "a32bb3c384bd3de60ad9024596aa5b395a6dd5beaa27a7223407cc2edc681d0b",
+    "sourceRecords": 717170,
+    "license": "CC-BY-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "attributionUrl": "https://db-ip.com",
+    "precision": "country",
+    "ipv4Records": 357325,
+    "ipv6Records": 359845,
+    "file": "geo-country.bin.gz",
+    "sha256": "446ef08b1d82eda2026e29a2eee8fe90fea1e7a2cc1ed358b0d6e55bb9063c1b"
+  },
+  "map": {
+    "provider": "Natural Earth",
+    "source": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson",
+    "sourceSha256": "3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb",
+    "license": "Public domain",
+    "licenseUrl": "https://www.naturalearthdata.com/about/terms-of-use/",
+    "scale": "1:50m",
+    "transformations": "Country label coordinates and names extracted. Equirectangular map paths projected to 1000x500, simplified by 0.25 display units and rounded to 0.01 unit. Markers use country labels, never server coordinates."
+  }
+}

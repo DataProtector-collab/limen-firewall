@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 — 2026-09-13
+
+- Added an offline world map using DB-IP Lite country data and Natural Earth outlines. Actual socket peers and blocked WFP attempts have separate labels; private and unknown locations remain explicit.
+- Keep Limen running in the Windows notification area when X is clicked. Restore through the icon or a second launch; actual exit asks for confirmation.
+- Added an explicitly enabled native WFP approval session for outbound public TCP/UDP attempts. Review the actual program and endpoint, deny it, or permit an endpoint/program for subsequent retries in the current session.
+- Keep existing Windows Firewall blocks authoritative. Temporary approval filters and decisions end when the mode stops or its native host exits; the mode starts off on a fresh launch.
+- Distribute the new native C++ core as separately licensed DLL/host binaries with pinned integrity checks. Its source remains local to the owner; existing MIT code retains its license.
+- Harden packaged Electron with embedded ASAR integrity, ASAR-only application loading and disabled Node environment/inspection entry points.
+- Added actual VM packet tests, installed UI checks, native lifecycle regression tests and IPv4/IPv6 offline GeoIP validation. See the validation record for tested scope and limits.
+
 ## 1.3.0 — 2026-09-12
 
 - Added Blackbox Breaker: actual hosted Windows services, configured service DLLs, process relationships, loaded module paths and explicit executable SHA-256/Authenticode inspection. PID plus creation time prevents stale process selections from attaching to reused PIDs.

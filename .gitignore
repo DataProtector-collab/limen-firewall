@@ -13,3 +13,4 @@ screenshots/
 *.zip
 *.log
 *.tsbuildinfo
+native/runtime/

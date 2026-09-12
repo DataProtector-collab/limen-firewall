@@ -13,4 +13,16 @@ contextBridge.exposeInMainWorld('limen', Object.freeze({
   applyRule: (input) => ipcRenderer.invoke('limen:apply', input),
   removeRule: (id) => ipcRenderer.invoke('limen:remove', id),
   setRuleEnabled: (id, enabled) => ipcRenderer.invoke('limen:enabled', { id, enabled }),
+  getGeoLocations: (addresses) => ipcRenderer.invoke('limen:geo-locations', addresses),
+  getApprovalStatus: () => ipcRenderer.invoke('limen:approval-status'),
+  startApproval: () => ipcRenderer.invoke('limen:approval-start'),
+  stopApproval: () => ipcRenderer.invoke('limen:approval-stop'),
+  decideApproval: (input) => ipcRenderer.invoke('limen:approval-decide', input),
+  quitApplication: () => ipcRenderer.invoke('limen:quit'),
+  onApprovalAttention: (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('An attention listener is required.');
+    const callback = () => listener();
+    ipcRenderer.on('limen:approval-attention', callback);
+    return () => ipcRenderer.removeListener('limen:approval-attention', callback);
+  },
 }));

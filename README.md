@@ -1,25 +1,27 @@
 # Limen
 
-**See Windows connections. Create real Windows Firewall rules for the programs you choose.**
+**See where programs connect. Review blocked Internet attempts. Create real Windows Firewall rules.**
 
-Limen **1.3.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release writes rules to Windows and reads their saved fields and active-policy status back. Successful storage does not guarantee that traffic is blocked; see the [validation record](docs/VALIDATION.md).
+Limen **1.4.0** is an early Windows desktop application built with Electron. It reads Windows TCP connections and UDP endpoints and manages its own program rules through Windows Defender Firewall. The old 1.1 web console could only simulate blocking; this release writes rules to Windows and reads their saved fields and active-policy status back. Successful storage does not guarantee that traffic is blocked; see the [validation record](docs/VALIDATION.md).
 
-![Limen 1.3.0 Blackbox Breaker inspecting a shared Windows service host](docs/blackbox-native-1.3.0.png)
+![Limen 1.4.0 offline world map showing an actual TCP peer](docs/world-map-native-1.4.0.png)
 
-The screenshot is the installed 1.3.0 Windows application in the test VM, inspecting a real shared service host. See the [validation record](docs/VALIDATION.md) for the process, UI, telemetry and packet checks, and the [War Monitor screenshot](docs/war-monitor-native-1.3.0.png) for its actual session chart.
+The screenshot shows the installed 1.4.0 application in the test VM with a real TCP connection and local country lookup. See the [validation record](docs/VALIDATION.md) for UI and packet checks. The existing [Blackbox service inspection](docs/blackbox-native-1.3.0.png) and [War Monitor](docs/war-monitor-native-1.3.0.png) remain available.
 
-[Windows downloads](https://github.com/DataProtector-collab/limen-firewall/releases/tag/v1.3.0) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Changes](CHANGELOG.md)
+[Windows downloads](https://github.com/DataProtector-collab/limen-firewall/releases/tag/v1.4.0) · [How it works](#how-it-works) · [Build from source](#build-from-source) · [Changes](CHANGELOG.md)
 
 ## Install on Windows
 
 Use Windows 10/11 **x64**, with Windows PowerShell 5.1, the NetSecurity module, and Windows Defender Firewall available.
 
-1. Download **Limen-1.3.0-setup-x64.exe** for installation, or **Limen-1.3.0-portable-x64.exe** for the portable app.
+1. Download **Limen-1.4.0-setup-x64.exe** for installation, or **Limen-1.4.0-portable-x64.exe** for the portable app.
 2. Starting the desktop app requests administrator privileges for Windows Firewall rule management. Without elevation, rule changes are unavailable.
 3. Open **Monitor** or **Apps** to inspect observed programs. Create an explicit inbound or outbound rule for a program, optionally limited to a literal remote IP, TCP/UDP, and local or remote port.
 4. Use **Rules** to inspect, disable, or remove rules created by Limen.
+5. Open **World map** for locally resolved peer countries. Open **Approvals** and explicitly enable the mode to review unknown outgoing Internet attempts before permitting a retry.
+6. **X** hides Limen in the Windows notification area. Use the icon to restore it; **Quit Limen** asks for confirmation.
 
-The initial release is **unsigned**. Verify the release SHA-256 checksums and use source builds if you need to inspect the application before running it. It is not a replacement for your organization's endpoint protection.
+This preview release is **unsigned**. Verify the release SHA-256 checksums and use source builds if you need to inspect the application before running it. It is not a replacement for your organization's endpoint protection.
 
 ## How it works
 
@@ -32,7 +34,7 @@ The initial release is **unsigned**. Verify the release SHA-256 checksums and us
 | Isolation | Local renderer files and a restricted Electron IPC bridge. No privileged HTTP server, account, cloud database, or remote web UI. |
 | Browser preview | An explicitly labeled simulation lab. It cannot inspect the visitor's computer or change Windows Firewall. |
 
-**This is not a first-packet interception firewall.** Limen observes sockets after Windows has created them. A connection may already have sent traffic before you create a rule. Its dialogs do not suspend packets, and it does not install a Windows Filtering Platform callout driver or enable global default-deny.
+The socket monitor observes connections after Windows creates them. Version 1.4 also adds an **explicitly enabled native approval mode**: unapproved outbound public TCP/UDP attempts are blocked through Windows Filtering Platform and shown for review. An approval permits a future retry; it does not resume a suspended socket call. The mode uses temporary session filters and starts off on a new application launch. [Controls and limits](docs/CONNECTION-CONTROL.md).
 
 Windows Firewall decides the final outcome. Explicit block rules take precedence over conflicting allow rules. Existing rules, disabled profiles, group policy, and other security products can affect enforcement. Limen reports its backend and profile status and does not disable Windows Firewall or rewrite system-wide profile defaults. See Microsoft's [rule precedence documentation](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules).
 
@@ -56,9 +58,18 @@ Version 1.3.0 adds hosted-service and process inspection, module lists, executab
 
 Read [the observation guide](docs/OBSERVABILITY.md) for controls, sampling limits and the distinction between a shared host and the service that originated traffic.
 
+## New in 1.4
+
+- **Offline world map:** approximate countries for TCP peers and actual outbound guard events, including UDP. No endpoint addresses are uploaded. Private and unknown addresses remain separate.
+- **Notification area:** X hides the running application. Restore it from its icon or by launching it again; actual exit requires confirmation.
+- **Internet approvals:** an optional native WFP session blocks unapproved public TCP/UDP attempts. Allow one destination or the whole program for the current session, or deny. Existing Windows blocks still apply.
+- **Native binary core and integrity:** a separately licensed C++ DLL and host, verified against pinned hashes, plus packaged Electron ASAR integrity and hardened fuses.
+
+[Read the 1.4 controls and limitations](docs/CONNECTION-CONTROL.md). Session approval mode is not a boot-time service or permanent default-deny policy: it ends when Limen actually exits or its native host dies.
+
 ## Build from source
 
-Use **Node.js 22.12 or newer** and npm. Windows is required to run and package the native backend.
+Use **Node.js 22.12 or newer** and npm. Windows is required to run and package the native backend. The new approval runtime is distributed as verified binaries under a separate license; its source is retained privately by the owner. The interface and public integration code remain MIT.
 
 ```sh
 git clone https://github.com/DataProtector-collab/limen-firewall.git
@@ -67,6 +78,7 @@ npm ci
 npm test
 npm run typecheck
 npm run build
+npm run native:prepare
 npm start
 ```
 
@@ -106,4 +118,4 @@ The desktop entry is `src/main.tsx`; obsolete web-server, account, database and 
 
 ## License
 
-[MIT](LICENSE). Copyright 2026 DataProtector-collab.
+[MIT](LICENSE) for the interface and public integration code. The new native approval DLL and host have a [separate binary license](NATIVE-LICENSE.md). Geographical data retains its own license and attribution. Copyright 2026 DataProtector-collab.

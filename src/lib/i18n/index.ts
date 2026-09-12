@@ -51,6 +51,15 @@ export const LOCALE_META: Record<Locale, { native: string; english: string; dir:
 const en: Record<string, string> = {
   "app.subtitle": "Windows Firewall console",
   "nav.monitor": "Monitor",
+  "nav.map": "World map",
+  "nav.approval": "Approvals",
+  "title.map": "Connection world map",
+  "sub.map": "Approximate countries from a local IP database",
+  "title.approval": "Internet approvals",
+  "sub.approval": "Blocked attempts and explicit session decisions",
+  "approval.active": "Internet approval mode active",
+  "approval.pending": "pending decisions",
+  "approval.unavailable": "Cannot read the connection guard — open approvals",
   "nav.war": "War Monitor",
   "nav.blackbox": "Blackbox",
   "nav.apps": "Apps",
@@ -86,7 +95,7 @@ const en: Record<string, string> = {
   "native.webHint":
     "This browser cannot read or change your Windows firewall. Use the Windows desktop application for real sockets and rules. Lab actions affect this simulation only.",
   "native.limit":
-    "Sockets are observed after they exist. Limen does not hold connections for approval. Whether saved rules apply depends on Windows Firewall and its profiles; this view is not proof that a packet was blocked.",
+    "This monitor observes Windows sockets. The separate approval mode blocks unapproved public TCP/UDP attempts while active. Saved Windows rules depend on the active policy; socket observations alone are not proof of blocking.",
   "native.backendUnavailable": "Windows Firewall management is unavailable.",
   "native.admin": "Administrator access",
   "native.adminYes": "Available",
@@ -266,6 +275,15 @@ const en: Record<string, string> = {
 const de: Record<string, string> = {
   "app.subtitle": "Windows-Firewall-Konsole",
   "nav.monitor": "Monitor",
+  "nav.map": "Weltkarte",
+  "nav.approval": "Freigaben",
+  "title.map": "Weltkarte der Verbindungen",
+  "sub.map": "Ungefähre Länder aus einer lokalen IP-Datenbank",
+  "title.approval": "Internetfreigaben",
+  "sub.approval": "Blockierte Versuche und ausdrückliche Sitzungsentscheidungen",
+  "approval.active": "Internet-Freigabemodus aktiv",
+  "approval.pending": "offene Entscheidungen",
+  "approval.unavailable": "Schutzkern nicht lesbar — Freigaben öffnen",
   "nav.war": "War Monitor",
   "nav.blackbox": "Blackbox",
   "nav.apps": "Apps",
@@ -301,7 +319,7 @@ const de: Record<string, string> = {
   "native.webHint":
     "Dieser Browser kann deine Windows-Firewall weder lesen noch ändern. Echte Sockets und Regeln sind in der Windows-Desktop-Anwendung verfügbar. Laboraktionen betreffen nur diese Simulation.",
   "native.limit":
-    "Sockets werden beobachtet, nachdem sie existieren. Limen hält Verbindungen nicht zur Genehmigung an. Ob gespeicherte Regeln greifen, hängt von Windows-Firewall und Profilen ab; diese Ansicht ist kein Nachweis blockierter Pakete.",
+    "Dieser Monitor beobachtet Windows-Sockets. Der separate Freigabemodus blockiert während seiner Laufzeit nicht freigegebene öffentliche TCP-/UDP-Versuche. Gespeicherte Windows-Regeln hängen von der aktiven Richtlinie ab; Socket-Beobachtungen allein beweisen keine Sperre.",
   "native.backendUnavailable": "Die Windows-Firewallverwaltung ist nicht verfügbar.",
   "native.admin": "Administratorrechte",
   "native.adminYes": "Verfügbar",

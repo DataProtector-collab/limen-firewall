@@ -1,16 +1,36 @@
 appId: dev.limen.firewall
 productName: Limen
 asar: true
+afterPack: scripts/hardening-after-pack.mjs
+afterAllArtifactBuild: scripts/hardening-after-artifacts.mjs
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 directories:
   output: release
 files:
   - dist/**/*
   - desktop/**/*.cjs
+  - desktop/native-runtime.json
+  - desktop/data/**/*
   - '!desktop/**/*.test.cjs'
+  - public/limen.ico
+  - LICENSE
+  - NATIVE-LICENSE.md
   - package.json
 extraResources:
   - from: desktop/windows-firewall.ps1
     to: windows-firewall.ps1
+  - from: native/runtime
+    to: native
+    filter:
+      - 'Limen.Approval.Core.dll'
+      - 'Limen.Approval.Host.exe'
+  - from: NATIVE-LICENSE.md
+    to: native/LICENSE.txt
 win:
   icon: public/limen.ico
   target:
